@@ -1,0 +1,17 @@
+SAMPLE_ID,sitename,PAHs,PCBs,DDTs,PAHsSL,PCBsSL,DDTsSL
+CSP-1,East End Beach,,3.139232437,1.77452653,,Below ERL,Between ERL and ERM
+CSP-2,Amethyst Lot,334508,3.976245683,1.926397202,Above ERM,Below ERL,Between ERL and ERM
+CSP-3,Maine State Pier/Ocean Gateway,39671,49.41557815,159.0608338,Between ERL and ERM,Between ERL and ERM,Above ERM
+CSP-4,Maine Wharf,31253,108.197735,101.2668313,Between ERL and ERM,Between ERL and ERM,Above ERM
+CSP-5,Portland Pier,85721,236.9764469,315.216777,Above ERM,Above ERM,Above ERM
+CSP-6,Chandler's Wharf,64731,30.02069659,2.651877122,Above ERM,Between ERL and ERM,Between ERL and ERM
+CSP-7,Union Wharf,128883.3333,108.7914735,65.67955667,Above ERM,Between ERL and ERM,Above ERM
+CSP-7D,Union Wharf,97735,145.9989027,53.73686072,Above ERM,Between ERL and ERM,Above ERM
+CSP-8,Wright Wharf,1366220,,272.2619675,Above ERM,,Above ERM
+CSP-9,Holyoke Wharf,108250,75.85433868,82.8761899,Above ERM,Between ERL and ERM,Above ERM
+CSP-10,Deake's Wharf,8627.8,3.216722617,1.785851656,Between ERL and ERM,Below ERL,Between ERL and ERM
+CSP-11,Portland Yacht Services,43509,247.1512748,191.1367726,Between ERL and ERM,Above ERM,Above ERM
+CSP-12,Ricker's Wharf,8163.7,6.346106311,5.400642082,Between ERL and ERM,Below ERL,Between ERL and ERM
+CSS-13,South Port Marina,8436.1,18.01726725,14.47581545,Between ERL and ERM,Below ERL,Between ERL and ERM
+CSP-14,Aspasia/Sunset Marina,2210.3,3.45261158,4.357166465,Below ERL,Below ERL,Between ERL and ERM
+CSS-15,Port Harbor/ Breakwater Marina,886.755,3.82509388,2.825289311,Below ERL,Below ERL,Between ERL and ERM

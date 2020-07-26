@@ -1,0 +1,345 @@
+---
+title: "Analysis of Sediment Toxicity Data : Pesticides"
+output: html_notebook
+---
+
+# Install Libraries
+
+```{r}
+library(readxl)
+library(tidyverse)
+library(GGally)
+library(maxLik)
+```
+# Load Basic Data
+```{r}
+sibfldnm <- 'Derived Data'
+parent <- dirname(getwd())
+sibling <- paste(parent,sibfldnm, sep = '/')
+fn <- 'working.data.xls'
+
+the.data <- read_excel(paste(sibling,fn, sep='/'), 
+    sheet = "Combined", col_types = c("skip", 
+        "text", "skip", "skip", "skip", 
+        "skip", "skip", "skip", "skip", 
+        "text", "text", "numeric", "text", 
+        "numeric", "text", "numeric", "numeric", 
+        "text", "text", "text", "skip", 
+        "skip", "skip", "skip", "skip", 
+        "numeric", "numeric", "skip", "skip", 
+        "skip", "skip", "skip", "skip", 
+        "skip")) %>%
+  mutate(SAMPLE_ID = factor(SAMPLE_ID, levels = c("CSP-1", "CSP-2", "CSP-3", "CSP-4", "CSP-5", "CSP-6",
+                                                  "CSP-7", "CSP-7D", "CSP-8", "CSP-9", "CSP-10", "CSP-11",
+                                                  "CSP-12", "CSS-13", "CSP-14", "CSS-15")))
+
+```
+# Chemical Parameters
+Pesticide Anylates are listed in a separate tab in the original Excel spreadsheet.  Here we pull them into a vector, for later use.
+```{r}
+tmp<- read_excel(paste(sibling,fn, sep='/'), sheet = "Pesticides", skip = 3)
+Pesticides.names <- tmp %>%
+  select(1) %>%
+  slice(1:19) %>%
+ pull(PARAMETER_NAME)
+  #mutate(PARAMETER_NAME = substr(PARAMETER_NAME, 1, nchar(PARAMETER_NAME)-7))
+Pesticides.names
+rm(tmp)
+```
+
+
+# Extract Pesticides Data
+We  filter down to selected parameters defined by a list of parameters.  Notice the second and third filters, which samples out QA/QC samples.  We have some duplicate samples (for CSP-6, CSP-15 - all measurements - CSP-10 - TOC data only - and CSP-9 - all observations EXCEPT TOC), so we calculate average values across multiple samples.
+
+The following reads in data and assigns the value of the reporting limit to data that was below the detection limits. This sets us up for later analysis based on different assumptions about how to habdle the non-detects.
+```{r}
+Pesticides.data.long <- the.data %>%
+  filter (the.data$PARAMETER_NAME %in% Pesticides.names) %>%
+  filter(is.na(`%_RECOVERY`)) %>%
+  filter(SAMPLE_ID != 'QC') %>%
+  mutate(CONCENTRATION = ifelse(is.na(CONCENTRATION) & LAB_QUALIFIER == 'U', REPORTING_LIMIT, CONCENTRATION)) %>%
+  group_by(SAMPLE_ID, PARAMETER_NAME) %>%
+  summarize(CONCENTRATION = mean(CONCENTRATION, na.rm=TRUE),
+            censored = sum(LAB_QUALIFIER=='U', na.rm=TRUE)) %>%
+  ungroup()
+```
+
+# Frequency of Detects by Parameter
+```{r}
+Pesticides.data.long %>%
+  group_by(PARAMETER_NAME) %>%
+  summarize(n = n(),
+            detects = sum(censored==0),
+            nondetects = sum(censored>0))
+```
+So, most pesticides were never detected.  The exceptions include:
+`4,4'-DDD`, `4,4'-DDE`, `4,4'-DDT`, `CIS-CHLORDANE`, `TRANS-NONACHLOR`
+But even several of those were only detected once, which suggests the analytic chemistry was not well suited to dirty harbor sediments.
+
+```{r}
+Pesticides.data <- Pesticides.data.long %>%
+  select(-censored) %>%
+  filter(PARAMETER_NAME %in% c("4,4'-DDD", "4,4'-DDE", "4,4'-DDT",
+                               "CIS-CHLORDANE", "TRANS-NONACHLOR")) %>%
+  spread(key = PARAMETER_NAME, value = CONCENTRATION) %>%
+  rowwise() %>%
+  mutate(totPesticides = sum(c(`4,4'-DDD`, `4,4'-DDE`, `4,4'-DDT`,
+                               `CIS-CHLORDANE`, `TRANS-NONACHLOR`), na.rm = TRUE))
+```
+
+
+# Inital Pairs Plot
+```{r}
+ggpairs(Pesticides.data[2:6])
+```
+Highly skewed data, with some moderate correlations evident, but partially obscured by the liineart scale.  Correlations are likely to be more evident in a log-log plot, or using rank correlations.
+
+# A Check for Reasonableness
+```{r}
+tmp <- Pesticides.data.long %>%
+  group_by(SAMPLE_ID) %>%
+  summarize(totPesticides = sum(CONCENTRATION, na.rm = TRUE),
+            countPesticides = sum(censored==0, na.rm=TRUE))
+
+plt <- ggplot(tmp, aes(totPesticides, countPesticides)) +
+  geom_point() +
+  geom_text(aes(label = SAMPLE_ID),nudge_y = .5, nudge_x = .1) +
+  geom_smooth() +
+  scale_x_log10() +
+  xlab('Log Total Pesticides (ppb)') +
+  ylab('Number of Pesticides observed') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme(panel.grid = element_blank()) 
+plt
+```
+So, unlike for the PCBs, the inordinately high detection limits for CSP-8 do not appear as a wild outlier.  Presumably, this is because the detection limits are an order of magnitude lower here than for the PCBs.  However, it is notable that the site stil lhase the highest sum of pesticides (based here on assuming the "real" concetration is the detection limit.  For consistency, we could consider removing CSP-8 from the data, but for now we don't do so.
+
+# Initial graphics
+```{r}
+tmp <- Pesticides.data
+tmp$SAMPLE_ID <- reorder(tmp$SAMPLE_ID, tmp$totPesticides, mean, na.rm = TRUE)
+
+tmp <- tmp %>% gather(key = 'pesticide', value = 'Concentration', 2:6) %>%
+  mutate(pesticide = factor(pesticide)) %>%
+  mutate(pesticide = reorder(pesticide, Concentration, function(x) -x[1]))
+ 
+  
+plt <- ggplot(tmp, aes(x=as.numeric(SAMPLE_ID), y = Concentration, color = pesticide)) +
+  geom_line(lwd = 2) +
+  scale_x_continuous(breaks = c(1:16-0.25), labels = levels(tmp$SAMPLE_ID), minor_breaks = FALSE) +
+  #scale_color_discrete(labels = substr(levels(tmp$Pesticides), 0, gregexpr(pattern ='.,',levels(tmp$Pesticides) ) )) +
+  xlab('Site ID') +
+  ylab('Log10 of Concentration (ppb)') +
+  scale_y_log10() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme(panel.grid = element_blank()) 
+plt
+```
+
+##Sites by Pesticides
+```{r} 
+
+ 
+plt <- ggplot(Pesticides.data.long, aes(PARAMETER_NAME, CONCENTRATION)) +
+  geom_col(aes(fill = SAMPLE_ID, color = censored>0)) +
+  scale_color_manual(values = c(NA, 'yellow')) +
+  xlab('Site ID') +
+  ylab('Concentration (ppb)') +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  theme(panel.grid = element_blank()) 
+plt
+```
+So, Pesticide data is dominated by the DDT residues.  We probably only need to look at them.  NOAA's SQUIRTS include screening levels for the sum of hte three main DDT residues.
+
+The SQUIRTS for the sum of the three DDT residues are as follows;
+```{r}
+type   <- c('TEL', 'ERL', 'PEL', 'ERM', 'AET')
+levels <- c(3.89, 1.58,51.7, 46.1, 11)
+```
+Note that teh SQUIRTS have screening levels for "Chlordane" but not "cis-Chlordane", and no screening values for Nonachlor.
+
+# Handling Non-detects
+The preceeding plots were based on modelling the value of non-detects as equal to the Reporting Limit, which is a very conservative approach.  Since detection limits for all organic contaminants are correlated as reported by the laboratory, this is problematic, especially for CSP-8, which had unusually high detection limits.
+
+A better approach uses the available data to estimate values of censored data based on available data -- including knowledge of detection limits and whether pesticides were detected.
+
+## Distributional graphics
+What kind of distribution do we actually have?
+```{r}
+plt <- ggplot(Pesticides.data.long, aes(PARAMETER_NAME, CONCENTRATION)) +
+  geom_violin() +
+  geom_point(aes(color = censored>0), alpha = 0.2, size=2) +
+  scale_y_log10() +
+  theme(axis.text.x = element_text(angle=90))
+plt
+```
+So, if we focus on the DDT residues, we actually have pretty good data, with only limited non-detects, and pretty close to a long-nomal distrobution (as far as we can tel lwith these very limited data).
+
+# Alternate Estimates of Sum of PCBs
+## Required functions
+See the notebook "Conditional Means of Censored Distributions" for an explanation of the following functions. Each function depends on the ones before it, but we'll end up only calling the last one, which manages the whole process.
+
+The idea is to fit a maximum likelihood model to the data assuming we are looking at a censored lognormal distribution.  With a lognormal density in hand, we can estimate a conditional mean of for "unobserved" observations below a the detection limit by sampling from the truncated distribution 1000 times (or more) and calculating a mean.
+
+The first function provides a likelihood function for a left-censored lognormal distribution. It is used with maximum likelihood estimation to estimate parameters for the underlying lognormal distribution, given a vector of concentrations and a vector of flags indicating which observations are censored.
+
+The second function estimates the conditional mean for a truncated lognormal distribution, given parameters of the lognormal distribution and a cutoff value (here, the detection limit). The third function vectorizes the second, allowing us to pass a vector of detection limits, rather than calculating this for each sample.
+
+The last function manages the process of combining the other functions to generate a "corrected" vector of estimated concentrations, where censored values are replaced by conditional means.
+
+Note that the assumption of the analysis is that the  underlying distribution is consistent, not that the detection limits are consistent. You can have multiple different detection limits -- as we have here -- and everything will still work out O.K.
+```{r}
+ lognormalloglik <-function (params, cc, flg)
+    {
+    lmu    <- params[[1]]
+    lsigma <- params[[2]]
+    if (lsigma<0) return(NA)
+    ll <- sum(if_else(flg,
+                  plnorm(cc, lmu,lsigma, log.p = TRUE),  # Total density below DL
+                  dlnorm(cc,lmu, lsigma, log=TRUE)) )    # Density for other obs
+    return(ll)
+}
+
+MeanTruncatedLogNormal <- function(lmu, lsigma, cutoff,  sz = 1000)
+  {
+  estsample <- sz + sz / plnorm(cutoff, lmu, lsigma)    # Figure out haw many values to draw 
+  rawsample <- rlnorm(estsample, lmu, lsigma)           # We calculate a lot of extras
+  sample <- rawsample[rawsample<cutoff]                 # Throw out all the samples that are too large
+  sample<- sample[1:sz]                                 # Take the first sz of them 
+  return(mean(sample))                                  # And finally, calculate the mean
+  }
+
+MeanTruncLN <- Vectorize(MeanTruncatedLogNormal, "cutoff")
+
+SemiSimulatedLN <-function (cc, flg) {
+  r <- maxLik( lognormalloglik, start=c(-2,3), cc=cc,flg=flg)   # Calculate maximum likelihood parameter estimates
+  es <- r$estimate
+  lmu = es[1]
+  lsigma <- es[2]
+  res <- ifelse(flg, MeanTruncLN(lmu, lsigma, cc), cc)          # Calculate a replacement values for censored observations
+  return(res)
+}
+```
+
+
+## Applying to the DDT Residues data
+Note the use of "mutate"  after the group_by() so that the dataframe is not collapsed to the grouping variables, as it would be by summary().
+
+The calculations involved are random, so if you want to get exactly the same results, you need to set the random number seed with set.seed()
+```{r}
+dat2 <- Pesticides.data.long %>%
+  filter(PARAMETER_NAME %in% c("4,4'-DDD", "4,4'-DDE", "4,4'-DDT")) %>%
+  group_by(PARAMETER_NAME) %>%
+  mutate(LikCensored = SemiSimulatedLN(CONCENTRATION, censored>0)) %>%
+  mutate(HalfDL = ifelse(censored>0, CONCENTRATION/2, CONCENTRATION)) %>%
+  ungroup()
+
+ggplot(dat2, aes(CONCENTRATION,LikCensored)) + geom_line() + geom_point(aes(color = censored>0), alpha = 0.5) + 
+  geom_abline(intercept = 0, slope= 1, alpha = 0.5, color = 'red') + 
+facet_wrap('PARAMETER_NAME', scales = 'free', nrow=3)
+
+res2 <- dat2 %>%
+  group_by(SAMPLE_ID) %>%
+  summarize(LNtotPesticide = sum(LikCensored),
+            halfDLtotPesticide = sum(HalfDL),
+            totPesticide = sum(CONCENTRATION))
+
+```
+So, for these parameters, the impact of using maximum likelihood estimated is very small.
+```{r}
+ggplot(res2, aes(x=totPesticide))+
+  geom_point(aes(y=LNtotPesticide), color = 'orange') +
+  geom_text(aes(y=LNtotPesticide, label = SAMPLE_ID), color = 'orange', hjust = 0) +
+  geom_point(aes(y=halfDLtotPesticide), color = 'red') +
+  geom_abline(intercept = 0, slope = 1, lty = 2) +
+  geom_text(aes(x=200, y=210, label = '1:1 Line'), angle = 35) +
+  geom_hline(yintercept = 1.58, color = 'blue', lty=3, size=1) +    #ERL
+  geom_text(aes(x=250, y=10, label = 'ERL'), color = 'blue') +
+  geom_hline(yintercept = 46.1, color = 'blue', lty=3, size=1) +     #ERM
+  geom_text(aes(x=250, y=60, label = 'ERM'), color = 'blue') +
+  xlab('Total, Assuming Detection Limit') +
+  ylab('Total, Assuming half DL (red) or Max. Lik (orange)') +
+  xlim(c(0,375)) +
+  scale_x_log10() + scale_y_log10() +
+  theme_minimal()
+```
+So, results are similar, except for CSP-6 and CSP-15, where the choice of estimator affects whether you determine that the likely levels of DDT residues exceeds ERL. 
+
+# Conclusion
+We should present results of pesticides restricted only to the sum of the DDT breakdown products.  I am uncertain how to label that item in a graphic.
+
+
+#Correcting for Half non-detects
+DDT samples from CSS-15 consisted of one non-detect and one elevated observation.  it's not obvious how to handle this site, as the two samples were sufficiently different to fail as a QA/QC check.  Here we report the average of the two values, which presents some problems addressing the non-detect correctly.
+
+When we average across the two values, we are averaging a non-detect with a significantly higher observation. In the preceeding analysis,  we flagged the average as a censored value, below the average.  That may bias the value for certain analyses.
+
+In our preliminary analyses (above), we saw that pesticide levels for CSS-15 were relatively low. If you replace the ND with the "detection limit" -- which here would be an average of the observed concentration and the DL -- that value slightly exceeds ERL. Using either half the DL or maximum likelihood estimation, the sample lies below ERL.
+
+So. how we handle this split sample matters. 
+
+To be thorough, we need to calculate our censored estimates (ND, Half ND and Maximum Likelihood) on the original raw data and average the results, rather than just assume everything works out o.k. when applied to the avergaged value.
+
+Obviously,if we are looking at the full detection limit, the average of a sum is the sum of the averages, and it makes no difference, but it should matter for the other two estimators, especially for the maximum liklihood estimator.
+
+ML estimator on the non-detect and average that result with the detected value, rather than applying the ML estimator to teh averaged value.  I can't imagine it will make much difference, but....
+
+### Raw Observations
+```{r}
+the.data %>%
+  filter(PARAMETER_NAME=="4,4'-DDT") %>%
+  filter(SAMPLE_ID == 'CSS-15') %>%
+  filter(is.na(`%_RECOVERY`)) %>%
+  filter(SAMPLE_ID != 'QC')
+```
+## So, correct values
+```{r}
+(0.744 +0.382)/2
+(0.744 + (0.382/2))/2
+```
+
+### Calculate half DL limits both ways
+```{r}
+tmp <- the.data %>%
+  filter(PARAMETER_NAME=="4,4'-DDT") %>%
+  filter(SAMPLE_ID == 'CSS-15') %>%
+  filter(is.na(`%_RECOVERY`)) %>%
+  filter(SAMPLE_ID != 'QC') %>%
+  mutate(censored = LAB_QUALIFIER %in% c('U', 'J')) %>%
+  mutate(CONCENTRATION = ifelse(censored, REPORTING_LIMIT, CONCENTRATION)) %>%
+  select(censored, CONCENTRATION, REPORTING_LIMIT) %>%
+  mutate(halfdl = ifelse(censored, REPORTING_LIMIT/2, CONCENTRATION))
+mean(tmp%>%pull(CONCENTRATION))/2
+mean(tmp%>%pull(halfdl))
+```
+So, doing this right sharply increases our estimate.
+
+### Calculate Maximum Likelihood Estimator two ways
+First the correct way, by averaging the two estimates
+```{r}
+est <- the.data %>%
+  filter(PARAMETER_NAME=="4,4'-DDT") %>%
+  filter(is.na(`%_RECOVERY`)) %>%
+  filter(SAMPLE_ID != 'QC') %>%
+  select(SAMPLE_ID, CONCENTRATION, REPORTING_LIMIT, LAB_QUALIFIER) %>%
+  mutate(censored = LAB_QUALIFIER %in% c('U', 'J')) %>%
+  mutate(CONCENTRATION = ifelse(censored, REPORTING_LIMIT, CONCENTRATION)) %>%
+  mutate(lnest = SemiSimulatedLN(CONCENTRATION, censored)) %>%
+  filter(SAMPLE_ID == 'CSS-15') %>%
+  pull(lnest)
+est
+mean(est)
+```
+Second, the simple way, by calculating estimates based on average value.
+```{r}
+Pesticides.data.long %>%
+  filter(PARAMETER_NAME=="4,4'-DDT") %>%
+  mutate(censored = censored>0) %>%
+  mutate(lnest = SemiSimulatedLN(CONCENTRATION, censored)) %>%
+  filter(SAMPLE_ID == 'CSS-15') %>%
+  pull(lnest)
+```
+So, this makes a big difference for our ML estimate, as suspected..
