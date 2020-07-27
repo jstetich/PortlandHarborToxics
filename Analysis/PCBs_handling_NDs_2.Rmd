@@ -1,23 +1,39 @@
 ---
 title: "Exploratory analysis of Sediment Toxicity Data : PCBs"
-output: html_notebook
+author: "Curtis C. Bohlen, Casco Bay Estuary Partnership"
+date: "7/16/2020"
+output:
+  github_document:
+    toc: true
+    fig_width: 7
+    fig_height: 5
 ---
 
+<img
+  src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
+  style="position:absolute;top:10px;right:50px;" />
+
 # Install Libraries
-```{r}
+```{r load_libraries}
 library(readxl)
 library(tidyverse)
 library(GGally)
 library(maxLik)
+
+library(CBEPgraphics)
+load_cbep_fonts()
+
+library(LCensMeans)
 ```
-# Load Basic Data
-```{r}
-sibfldnm <- 'Derived Data'
+
+# Load Contaminants Data
+```{r load_data}
+sibfldnm <- 'Derived_Data'
 parent <- dirname(getwd())
 sibling <- paste(parent,sibfldnm, sep = '/')
-fn <- 'working.data.xls'
+fn <- 'working_data.xls'
 
-the.data <- read_excel(paste(sibling,fn, sep='/'), 
+the_data <- read_excel(paste(sibling,fn, sep='/'), 
     sheet = "Combined", col_types = c("skip", 
         "text", "skip", "skip", "skip", 
         "skip", "skip", "skip", "skip", 
@@ -34,51 +50,63 @@ the.data <- read_excel(paste(sibling,fn, sep='/'),
 
 ```
 
-# PCB Terminology
-Unfortunately, the PCB terminology is not something I am familiar with. I can cross-correlate by CAS numbers as follows:
-```{r}
-fn <- 'PCB nomenclature.xlsx'
+## PCB Terminology
+Unfortunately, the PCB terminology is complex and non-intuitive, with the same compounds referred to in multiple ways.  We can cross-correlate by CAS numbers as follows:
+```{r pcb_nomenclature}
+fn <- 'PCB_nomenclature.xlsx'
 
-pcbnames <- read_excel(paste(sibling, fn, sep = '/')) %>%
+pcbnames <- read_excel(file.path(sibling, fn)) %>%
   mutate(CAS_NO = gsub('-', '', CASRN))
 
-the.data %>%
+the_data %>%
   group_by(PARAMETER_NAME) %>%
-  summarize(CAS_NO = first(CAS_NO)) %>%
+  summarize(CAS_NO = first(CAS_NO), .groups = 'drop') %>%
   filter(grepl(pattern='CL', x=PARAMETER_NAME)) %>%
   mutate(name = pcbnames$`IUPAC Name`[match(CAS_NO, pcbnames$CAS_NO)]) %>%
   mutate(congener = pcbnames$`Congener Number`[match(CAS_NO, pcbnames$CAS_NO)]) %>%
-  arrange(congener)
+  arrange(congener) %>%
+  knitr::kable(col.names = c('PCB Name', 'CAS No.',
+                             'Chemical', 'Congener No.') ,align = 'l')
 rm(pcbnames)
 ```
-So, The PCB names provided in the data incorporate both the number of chlorines and the PCB congener number,  The official IUPAC names are available, but would be impenetrable to most State of the Bay readers.  This analysis does provide more terms under which to look for screening levels under the squirt tables. But the SQUIRTS re do not contain screening levels for specific PCBs in marine sediments, only for the SUM of PCBs.
+The PCB names provided in the data incorporate both the number of chlorines and the PCB congener number,  The official IUPAC names are available, but would be impenetrable to most State of the Bay readers.  This table does provide more terms under which to look for screening levels under the squirt tables. But the SQUIRTS  do not contain screening levels for specific PCBs in marine sediments, only for the SUM of PCBs.
 
-# Chemical Parameters.
-Here's the list of PCBs extracted and analysed by Stantec/Campbell
-```{r}
-sibfldnm <- 'Derived Data'
+## Chemical Parameters.
+Here's the list of PCBs extracted and analyzed by Stantec/Campbell
+```{r find_chem_names}
+sibfldnm <- 'Derived_Data'
 parent <- dirname(getwd())
 sibling <- paste(parent,sibfldnm, sep = '/')
-fn <- 'working.data.xls'
+fn <- 'working_data.xls'
 
-PCBs.names <- read_excel(paste(sibling,fn, sep='/'), sheet = "PCBs", skip = 3) %>%
+PCBs_names <- read_excel(paste(sibling,fn, sep='/'), sheet = "PCBs", skip = 3) %>%
   select(1) %>%
   slice(1:22) #%>%
-(PCBs.names <- PCBs.names$PARAMETER_NAME)
+PCBs_names <- PCBs_names$PARAMETER_NAME
+cat(do.call(paste, c(as.list(PCBs_names),sep = ', ')))
 ```
 
-# Extract PCBs Data Only
-We filter down to selected parameters defined in our list of parameters.  The second filter, which samples out some QA/QC samples.  Note also that we have some duplicate samples (for CSP-6, CSP-15 - all measurements - CSP-10 - TOC data only - and CSP-9 - all observations EXCEPT TOC), so for preliminary analysis we calculate average values across multiple samples. (The risk here lies with how to address split samples where one sample was a detection, and the other not.  However, that apparently never happened.)
+## Extract PCBs Data Only
+We filter down to selected parameters defined by that list of chemicals.  The second and third filters remove some QA/QC samples.
 
-Notice that data are far from normal, even after transformation.  And it makes little sense to include non-detects when the non-detects outnumber the detects.  It's probably more useful to evaluate total detections and total estimated PCB loads.
+We have some duplicate samples:
+1.  For CSP-6 and CSP-15 - all measurements 
+2.  CSP-10 - TOC data only - and
+3.  CSP-9 - all observations EXCEPT TOC
 
-The pattern of the reporting limits appears odd -- it looks like the same detection limits were assigned to all compounds. Usually, the detection limits vary by compound. Note also that some PCBs were never detected.
+For this analysis we calculate average values across the duplicate samples.
 
-# Load PCB Data, with PCBs at detection limit
-There must be a better way to summarize both total PCBs and the number of PCBs detected...
-```{r}
-PCBs.data.long <- the.data %>% 
-  filter (the.data$PARAMETER_NAME %in% PCBs.names) %>%
+Notice that data are far from normal, even after transformation.  And non-detects frequently outnumber the detects.  For detailed statistical analysis it may be valuable to evaluate total detections and total estimated PCB loads.
+
+## Question about Reporting Limits
+The pattern of the reporting limits appears odd.  It looks like the same detection limits were assigned to all compounds within each sample. Usually, the detection limits vary by compound. Note also that some PCBs were never detected.
+
+## Create PCB Data
+We load the data in a format that records both observed values and reporting limits in a single data column, along with a second (logical) column that indicates whether the value was observed or represents a detection limit.  
+
+```{r shape_pcb_data}
+PCBs_data_long <- the_data %>% 
+  filter (the_data$PARAMETER_NAME %in% PCBs_names) %>%
   filter(is.na(`%_RECOVERY`)) %>%
   filter(SAMPLE_ID != 'QC') %>%
   mutate(CONCENTRATION = ifelse(is.na(CONCENTRATION) & LAB_QUALIFIER == 'U',
@@ -86,104 +114,112 @@ PCBs.data.long <- the.data %>%
   group_by(SAMPLE_ID, PARAMETER_NAME) %>%
   summarize(CONCENTRATION = mean(CONCENTRATION, na.rm=TRUE),
             samples = n(),
-            censored = sum(LAB_QUALIFIER=='U', na.rm=TRUE)) %>%
+            censored = sum(LAB_QUALIFIER=='U', na.rm=TRUE),
+            .groups = 'drop') %>%
   ungroup() %>%
   rename(PCB = PARAMETER_NAME) %>%
   mutate(PCB = factor(PCB)) %>%
   mutate(PCB = reorder(PCB, CONCENTRATION, function(x) mean(x, na.rm=TRUE)))
 
-sum(PCBs.data.long$censored> 0 & PCBs.data.long$censored<PCBs.data.long$samples)
+sum(PCBs_data_long$censored> 0 & PCBs_data_long$censored<PCBs_data_long$samples)
+```
+That zero shows that replicate samples are either all detects or all non-detects.
 
-tmp <- PCBs.data.long %>%
+## A Problem
+```{r show_problem}
+tmp <- PCBs_data_long %>%
   group_by(SAMPLE_ID) %>%
   summarize(totPCBs = sum(CONCENTRATION, na.rm = TRUE),
-            countPCBs = sum(censored==0, na.rm=TRUE))
+            countPCBs = sum(censored==0, na.rm=TRUE),
+            .groups = 'drop')
 
-```
-
-# A problem
-```{r}
 plt <- ggplot(tmp, aes(totPCBs, countPCBs)) +
   geom_point() +
   geom_text(aes(label = SAMPLE_ID),nudge_y = .5, nudge_x = .1) +
-  geom_smooth() +
+  geom_smooth(se=FALSE) +
   scale_x_log10() +
   xlab('Log Total PCBs (ppb)') +
   ylab('Number of PCBs observed') +
-  theme_minimal() +
+  theme_cbep() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   theme(panel.grid = element_blank()) 
 plt
+rm(tmp)
 ```
-O.K., that makes no sense.  The data for CSP-8 includes high values for ALL PCBs, so how can they all be non-detects?  But that is  clearly what the data contain.  However, those high values are all flagged as non-detects.
+The data for CSP-8 includes high values for ALL PCBs, however, those high values are all flagged as non-detects.
 
-Looking at the raw data, it is clear the reporting limits are sky high for this one site (almost two order of magnitude higher than for other sites), so this provides us with no useful information about contaminants in the field.  It is worth noting that the limits for most other organic contaminants are similarly high.  This suggests we should drop this site from analyses of organic contaminants.
+Looking at the raw data, it is clear the reporting limits are sky high for this one site (almost two order of magnitude higher than for other sites), so this provides us with no useful information about contaminants in the field.  It is worth noting that the limits for most other organic contaminants are similarly high.  This suggests we should drop this site from analyses of organic contaminants, at least if we rely on analysis of sky-high non-detects.
 
-```{r}
-PCBs.data.long <- PCBs.data.long %>%
+We drop the site from further analysis.
+```{r drop_csp8}
+PCBs_data_long <- PCBs_data_long %>%
   filter(SAMPLE_ID != 'CSP-8')
-tmp <- tmp  %>%
-  filter(SAMPLE_ID != 'CSP-8')
 ```
 
-## Create Final Data Sets
-```{r}
-PCBs.data.long <- PCBs.data.long %>%
-  mutate(SAMPLE_ID = factor(SAMPLE_ID,
-                            levels= tmp$SAMPLE_ID[order(tmp$totPCBs)]))
+## Final Data Set
+```{r final_data}
+lvls <- PCBs_data_long %>%
+  group_by(SAMPLE_ID) %>%
+  summarize(totPCBs = sum(CONCENTRATION, na.rm = TRUE),
+            .groups = 'drop') %>%
+  mutate(SAMPLE_ID = factor(SAMPLE_ID, levels = SAMPLE_ID[order(totPCBs)])) %>%
+  pull(SAMPLE_ID) %>%
+  levels()
 
-PCBs.data.dl <- PCBs.data.long %>%
-  select(-samples,-censored) %>%
-  spread(key=PCB, value = CONCENTRATION)  %>%
-  mutate(totPCBs = tmp$totPCBs[match(SAMPLE_ID, tmp$SAMPLE_ID)]) %>%
-  mutate(countPCBs = tmp$countPCBs[match(SAMPLE_ID, tmp$SAMPLE_ID)]) %>%
-  ungroup() %>%
-  mutate(SAMPLE_ID = reorder(SAMPLE_ID, totPCBs, sum))
+PCBs_data_long <- PCBs_data_long %>%
+  mutate(SAMPLE_ID = factor(SAMPLE_ID, levels = lvls))
 
-#rm(tmp)
+rm(lvls)
 ```
 
-# Initial graphics
+# Exploratory Graphics
 ## PCBs by Site
-```{r} 
-plt <- ggplot(PCBs.data.long, aes(SAMPLE_ID, CONCENTRATION)) +
+```{r pcbs_by_site} 
+plt <- ggplot(PCBs_data_long, aes(SAMPLE_ID, CONCENTRATION)) +
   geom_col(aes(fill = PCB, color = censored>0)) +
-  scale_color_manual(values = c(NA, 'yellow')) +
+  scale_color_manual(values = c('black', 'yellow')) +
   xlab('Site ID') +
   ylab('Concentration (ppb)') +
-  theme_minimal() +
+  theme_cbep(base_size = 10) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-  theme(panel.grid = element_blank()) 
+  theme(legend.position = "none")
 plt
 ```
-That's a bit hard to read, but is O.K. for exploratory data analysis.
-##Sites by PCBs
-```{r} 
-plt <- ggplot(PCBs.data.long, aes(PCB, CONCENTRATION)) +
-  geom_col(aes(fill = SAMPLE_ID, color = censored>0)) +
-  scale_color_manual(values = c(NA, 'yellow')) +
-  xlab('Site ID') +
+
+## Sites by PCBs
+```{rsites_by_pcbs} 
+plt <- ggplot(PCBs_data_long, aes(PCB, CONCENTRATION)) +
+  geom_col(aes(fill = SAMPLE_ID, color = censored>0), lwd = 1) +
+  scale_color_manual(values = c('black', 'yellow'), name = 'Censored') +
+  xlab('PCB') +
   ylab('Concentration (ppb)') +
-  theme_minimal() +
+  theme_cbep(base_size = 10) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-  theme(panel.grid = element_blank()) 
+  theme(panel.grid = element_blank()) +
+  theme(legend.key.size = unit(.15, 'in'))
 plt
 ```
-SO, the mix of PCBs varies plot to plot quite a bit.  Most non-detects happened at a handful of sites, where they tended to happen for multiple PCBs.
+So, the mix of PCBs varies plot to plot quite a bit.  Most non-detects happened at a handful of sites, where they tended to happen for multiple PCBs.
 
 # Correlations
-We can look at correlations, but they are actually not all that informative, because of the large number of non-detects.  It is better here to conduct analyses using methods that address the non--detects explicitly.  But to a first approximation, note that the correlation coefficients are high between almost all PCBs.  Some of that, unfortunately, reflects the identical detection limits for all compounds reported by the laboratory. 
-```{r}
-cor(PCBs.data.dl[2:25], method = 'spearman')
+We can look at correlations, but they are not all that informative, because of the large number of non-detects.  It is better here to conduct analyses using methods that address the non--detects explicitly.  But to a first approximation, note that the correlation coefficients are high between almost all PCBs.  Some of that, unfortunately, reflects the identical detection limits for all compounds reported by the laboratory.
+```{r correlations}
+PCBs_data_long %>%
+  pivot_wider(id_cols = SAMPLE_ID,
+              names_from = 'PCB',
+              values_from = 'CONCENTRATION') %>%
+  select(-SAMPLE_ID) %>%
+  cor(method = 'spearman') %>%
+  knitr::kable(digits = 2)
 ```
 
-# Explicit Analysis of Non Detects
-Here we continue the analysis, with an explicit effort to model the non-detects.  We do this, as elsewhere, using a simple maximum likelihood estimation procedure to calculate an estimated distribution for each contaminant, and then replace the NDs with an estimate of the conditional mean suggested by those concentrations.
+# Analysis of Non Detects
+Here we continue the analysis with an explicit effort to model the non-detects.  We do this, as elsewhere, using a simple maximum likelihood estimation procedure to calculate an estimated distribution for each contaminant, and then replace the NDs with an estimate of the conditional mean suggested by those concentrations.
 
 ## Distributional graphics
 What kind of distribution do we actually have?
-```{r}
-plt <- ggplot(PCBs.data.long, aes(PCB, CONCENTRATION)) +
+```{r distribution_graphic}
+plt <- ggplot(PCBs_data_long, aes(PCB, CONCENTRATION)) +
   geom_violin() +
   geom_point(aes(color = censored>0), alpha = 0.2, size=2) +
   scale_y_log10() +
@@ -191,90 +227,66 @@ plt <- ggplot(PCBs.data.long, aes(PCB, CONCENTRATION)) +
   
 plt
 ```
-So, the bulk of our data lies in censored values, which themselves varied from site to site. higher, There is far too little data here to determine a distribution for most of these data, but a lognormal or Gamma distribution are both likely, give the constraint that values can not be lower than zero.  Here we use a lognormal distribution, largely for its simplicity.
+So, the bulk of our data lies in censored values, which themselves varied from site to site. higher, There is far too little data here to determine a distribution for these data, but a lognormal or Gamma distribution are both likely, give the constraint that values can not be lower than zero.  Here we use a lognormal distribution, largely for its simplicity.
 
 # Alternate Estimates of Sum of PCBs
-## Required functions
-See the notebook "Conditional Means of Censored Distributions" for an explanation of the following functions. Each function depends on the ones before it, but we'll end up only calling the last one, which manages the whole process.
+## Alternate Estimates of Sum of PAHs
+We want to focus on analysis of the sum of PCBs, because all PCBs are highly correlated, and the SQUIRT tables provide screening criteria for the sum of PCBs.  
+The question is, how do we best handle the non-detects.  Often in environmental analyses, non-detects are replaced by zero, by the detection limit, or by half the detection limit, but none of those conventions rests on strong statistical principals.  We instead implement a method that estimates the (unobserved) value of non-detects using a conditional mean of censored observations derived from a maximum likelihood procedure.
 
-The idea is to fit a maximum likelihood model to the data assuming we are looking at a censored lognormal distribution.  With a lognormal density in hand, we can estimate a conditional mean of for "unobserved" observations below a the detection limit by sampling from the truncated distribution 1000 times (or more) and calculating a mean.
+The idea is to fit a maximum likelihood model to the data assuming a censored lognormal distribution.  With a lognormal density in hand, we can estimate a conditional mean of for "unobserved" observations below a the detection limit by sampling from the underlying lognormal distribution 1000 times (or more) and calculating a mean.
 
-The first function provides a likelihood function for a left-censored lognormal distribution. It is used with maximum likelihood estimation to estimate parameters for the underlying lognormal distribution, given a vector of concentrations and a vector of flags indicating which observations are censored.
+We developed functions for implementing this procedure.  Those functions have been incorporated into a small package, 'LCensMeans' to facilitate use in CBEP State of the Bay Analyses.
 
-The second function estimates the conditional mean for a truncated lognormal distribution, given parameters of the lognormal distribution and a cutoff value (here, the detection limit). The third function vectorizes the second, allowing us to pass a vector of detection limits, rather than calculating this for each sample.
+See the help files in the LCensMeans package for more explanation, or read the R Notebook "Conditional Means of Censored Distributions", where we developed the basic approach.
 
-The last function manages the process of combining the other functions to generate a "corrected" vector of estimated concentrations, where censored values are replaced by conditional means.
+The LCensMeans package is in active development in pre-release form, so there is no guarantee that the user interface will not change.  The following code worked as of July 2020.
 
-Note that the assumption of the analysis is that the  underlying distribution is consistent, not that the detection limits are consistent. You can have multiple different detection limits -- as we have here -- and everything will still work out O.K.
-```{r}
- lognormalloglik <-function (params, cc, flg)
-    {
-    lmu    <- params[[1]]
-    lsigma <- params[[2]]
-    if (lsigma<0) return(NA)
-    ll <- sum(if_else(flg,
-                  plnorm(cc, lmu,lsigma, log.p = TRUE),  # Total density below DL
-                  dlnorm(cc,lmu, lsigma, log=TRUE)) )    # Density for other obs
-    return(ll)
-}
-
-MeanTruncatedLogNormal <- function(lmu, lsigma, cutoff,  sz = 1000)
-  {
-  estsample <- sz + sz / plnorm(cutoff, lmu, lsigma)    # Figure out haw many values to draw 
-  rawsample <- rlnorm(estsample, lmu, lsigma)           # We calculate a lot of extras
-  sample <- rawsample[rawsample<cutoff]                 # Throw out all the samples that are too large
-  sample<- sample[1:sz]                                 # Take the first sz of them 
-  return(mean(sample))                                  # And finally, calculate the mean
-  }
-
-MeanTruncLN <- Vectorize(MeanTruncatedLogNormal, "cutoff")
-
-SemiSimulatedLN <-function (cc, flg) {
-  r <- maxLik( lognormalloglik, start=c(-2,3), cc=cc,flg=flg)   # Calculate maximum likelihood parameter estimates
-  es <- r$estimate
-  lmu = es[1]
-  lsigma <- es[2]
-  res <- ifelse(flg, MeanTruncLN(lmu, lsigma, cc), cc)          # Calculate a replacement values for censored observations
-  return(res)
-}
-```
-
-## Applying to the PCBs data
+## Applying to the PCBs Data
 Note the use of "mutate"  after the group_by() so that the dataframe is not collapsed to the grouping variables, as it would be by summary().
 
 The calculations involved are random, so if you want to get exactly the same results, you need to set the random number seed with set.seed()
-```{r fig.height = 8, fig.width = 10}
-dat2 <- PCBs.data.long %>%
+```{r data_with_NDs}
+dat2 <- PCBs_data_long %>%
   group_by(PCB) %>%
-  mutate(LikCensored = SemiSimulatedLN(CONCENTRATION, censored>0)) %>%
+  mutate(LikCensored = sub_conditional_means(CONCENTRATION, censored>0)) %>%
   mutate(HalfDL = ifelse(censored>0, CONCENTRATION/2, CONCENTRATION)) %>%
   ungroup()
-
-
-ggplot(dat2, aes(CONCENTRATION,LikCensored)) + geom_line() + geom_point(aes(color = censored>0), alpha = 0.5) + 
-  geom_abline(intercept = 0, slope= 1, alpha = 0.5, color = 'red') + 
-facet_wrap('PCB', scales = 'free')
 
 res2 <- dat2 %>%
   group_by(SAMPLE_ID) %>%
   summarize(LNtotPCB = sum(LikCensored),
             halfDLtotPCB = sum(HalfDL),
-            totPCB = sum(CONCENTRATION))
+            totPCB = sum(CONCENTRATION), 
+            .groups='drop')
+```
+
+## Implications of Alternate Treatment of NDs
+```{r NDs_graphic, fig.height = 8, fig.width = 10}
+ggplot(dat2, aes(CONCENTRATION,LikCensored)) +
+  geom_line() +
+  geom_point(aes(color = censored>0), alpha = 0.5) + 
+  geom_abline(intercept = 0, slope= 1, alpha = 0.5, color = 'red') + 
+  facet_wrap('PCB', scales = 'free') +
+  theme_cbep(base_size = 8) +
+  scale_color_manual(values = cbep_colors2(), name = 'Censored')
 
 ```
-The first panel shows random variation for a parameter with no detections, but variable detection limits. Note that the "corrected" estimates are all small and only vary in the fourth decimal place, well below differences that can possibly matter.
+The first panel shows the essentially meaningless variation for a parameter with no detections, but variable detection limits. Note that the "corrected" estimates are all small and only vary in the fourth decimal place, well below differences that can possibly matter.  In general, that is the pattern we observe - -chemicals with large numbers of non-detects tend to be present in low concentrations, even in sites where they were detected.  This the non-detects have relatively little effect on estimates of total PCBs.
 
 # Check Consistency
 I want to make sure the code was applying the fit correctly PCB by PCB, so let's calculate directly for one PCB, and compare results.
-```{r}
-PCBs.data.long %>%
+```{r consistency}
+PCBs_data_long %>%
   filter(PCB=='CL9-BZ#206') %>%
-  mutate(LikCensored = SemiSimulatedLN(CONCENTRATION, censored>0)) %>%
+  mutate(LikCensored = sub_conditional_means(CONCENTRATION, censored>0)) %>%
   select(LikCensored) %>%
-  mutate(test = dat2[dat2$PCB=='CL9-BZ#206',]$LikCensored)
+  mutate(test = dat2[dat2$PCB=='CL9-BZ#206',]$LikCensored) %>%
+  knitr::kable(digits = 3)
 ```
-So, results are not quite identical, but close enough (under 1%) so that the differences are almost surely due to the random sampling strategy used.
-```{r}
+So, results are not quite identical, but close enough (usually under 1%) so that the differences are almost surely due to the random sampling strategy used.
+# Impact of Selection of ND Method on Conclusions
+```{r does_handling_of_nds_matter}
 ggplot(res2, aes(x=totPCB))+
   geom_point(aes(y=LNtotPCB), color = 'orange') +
   geom_text(aes(y=LNtotPCB, label = SAMPLE_ID), color = 'orange', hjust = 0) +
@@ -288,12 +300,12 @@ ggplot(res2, aes(x=totPCB))+
   xlab('Total, Assuming Detection Limit') +
   ylab('Total, Assuming half DL (red) or Max. Lik (orange)') +
   xlim(c(0,275)) +
-  theme_minimal()
+  theme_cbep()
 ```
-So, little meaningful payoff for all the extra work.  As expected, the maximum likelihood estimator is regularly lower than the "half of detection limit" method for these cases, where non-detects were frequent.
+As expected, the maximum likelihood estimator is regularly lower than the "half of detection limit" method for these cases, where non-detects were frequent.
 
-However, this makes little functional difference in qualitative conclusions, because detections dominate the Total PCB values at each site.  Ther is only one site where choice of th eestiumator used would determine whether you concluded local concetration of PCBs was above or below 
+However, this makes little functional difference in qualitative conclusions, because detections dominate the Total PCB values at each site.  The choice of the estimator determines conclusions at only one site (site CSS-13), where the site exceeds ERL if you replace NDs with half the detection limit, but does not if you use the maximum likelihood approach.
 
 # Conclusion
-So, what do we have to show for this?  Slightly better estimates of total PCBs, for use in otehr graphics.
+So, what do we have to show for this?  Slightly better estimates of total PCBs, for use in other graphics.
 

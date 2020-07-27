@@ -1,0 +1,205 @@
+---
+title: "Replacing censored lognormal data with conditional means for censored values"
+author: "Curtis C. Bohlen, Casco Bay Estuary Partnership"
+date: "7/16/2020"
+output:
+  github_document:
+    toc: true
+    fig_width: 7
+    fig_height: 5
+---
+
+<img
+  src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
+  style="position:absolute;top:10px;right:50px;" />
+
+
+# Introduction
+We want to calculate a reasonable sum of all PCBs observed in the fifteen Portland harbor samples.
+
+However, a majority of PCB observations by PCB congener and sample are non-detects. Somehow, we need to estimate the value of censored data for calculating totals.  
+
+It is not at all obvious how to do that.  The classic approach has often been to replace the censored data with a "worst case" value of the relevant reporting limit, or perhaps by one half of the reporting limit.  Both of those approaches have no statistical justification, and effectively ignore the information we get by knowing how many observations fall below the reporting limit.
+
+We can come up with a "better" -- or at least statistically more efficient -- estimate of the mass of PCBs if we are willing to fit a lognormal model to the censored data using maximum likelihood.  We actually have few enough "detects" for most of the PCB congeners that it is pretty much impossible to evaluate whether a lognormal distribution is appropriate or not.  We advance anyway.
+
+With many non-detects, this approach is considerably less pessimistic than simply replacing each non-detect by the related reporting limit.
+
+# Import Libraries
+```{r load libraries}
+library(tidyverse)
+library(maxLik)
+
+library(CBEPgraphics)
+load_cbep_fonts()
+```
+
+# Censored Lognormal Log Likelihood Function
+We calculate a loglikelihood for censored data directly, using a simple function. The function call here is designed to feed the optimization routines provided in the maxLik library.  In particular, maxLik requires the first function parameter to be a list of parameters of the distribution to be fit (here the lognormal distribution).
+```{r likelihood}
+ lognormalloglik <-function (params, cc, flg)
+    {
+    lmu    <- params[[1]]
+    lsigma <- params[[2]]
+    
+    if (lsigma<0) return(NA)
+        
+    ll <- sum(if_else(flg,
+                  plnorm(cc, lmu,lsigma, log.p = TRUE),  # Total density below DL
+                  dlnorm(cc,lmu, lsigma, log=TRUE)) )   # Density for other obs
+    return(ll)
+}
+```
+
+# What value should we substutute for censored data?
+Somehow we need to select a value based on that distribution that we think is a more reasonable value than the old "one half of reporting limit" rule.
+
+We could consider the CONDITIONAL mean derived from the underlying lognormal distribution, conditioned on the data being censored.  While it is probably possible to calculate that conditional mean analytically, it's quite simple to estimate the mean based on a random sample drawn from the underlying distribution.
+
+To demonstrate the idea, we will develop a cartoon censored dataset to explore this.
+
+(A side note -- the maximum likelihood estimates with a small number of observations may not be all that stable....)
+
+# Cartoon Censored Lognormal Data
+We create a random set of censoring levels, create a random lognormal dataset, and simulate censoring the data. 
+
+Since we are generating the data randomly, we use "set.seed" to enable us to repeat the analyses with the same sequence of random values.
+```{r simulated_data}
+set.seed(12345)
+cens <- data.frame(cc =rnorm(5, .1, 0.025))  # Random censoring values near .1
+rownames(cens) = c('a','b','c','d','e')      # Selector for those values
+
+demo_df <- tibble( a = rlnorm(50, -1, 3),
+                   b = rep(c('a','b','c','d','e'), 10)) %>% 
+  mutate(c = cens[b,]) %>%
+  mutate(flag = if_else(a<c,TRUE, FALSE)) %>%  # determine which are censored
+  mutate(a = ifelse(a<c,c, a)) %>%            # replace value with DL
+  arrange(a)
+sum(demo_df$flag)                             # Count how many are censored
+```
+So, 15 of 50 observations are censored given the random parameters we chose and the particular random number sequence we used.
+
+```{r plot_data}
+plt <- ggplot(demo_df, aes(1:50, a, color = flag)) +
+  geom_point() + 
+  theme_cbep() +
+  scale_y_log10() +
+  xlab('Rank')
+plt
+```
+
+# Testing maximum likelihood method
+We can demonstrate the use of the maximum likelihood parameter estimation on our cartoon dataset.
+```{r maxLIk_estimate}
+parms <- maxLik(lognormalloglik, start=c(-2,3), cc= demo_df$a,flg= demo_df$flag>0)
+parms$estimate
+```
+Notice that our estimates here are fairly close to the "true" value we started with: (-1,3) .  Maximum likelihood fits a lower expected value, but higher variance. That is not unreasonable for a highly censored data set.  The graphic shows that the estimate generates a curve largely indistinguishable from the "true" probability density except at the lowest (largely censored) values.  This bias in not entirely unexpected, since we have lost information on the distribution of those lower values through censoring.
+
+```{r}
+plt <- ggplot(data = NULL, aes(x=a)) +
+  geom_histogram(data = demo_df,
+                 mapping =aes(x = a, y = ..density.., fill = flag),
+                 bins=20) +
+  theme_cbep() +
+  scale_x_log10() +
+  geom_line(data = NULL, color = 'green',
+            aes(x= seq(0.1,  200, 0.1),
+                y = dlnorm(seq(0.1,  200, 0.1),
+                           parms$estimate[[1]],
+                           parms$estimate[[2]]))) +
+    geom_line(data = NULL,
+            aes(x= seq(0.1,  200, 0.1),
+                y = dlnorm(seq(0.1,  200, 0.1),
+                           -1, 3)))
+plt
+```
+
+# Calculating Conditional Means
+Now, we need to calculate conditional means.  We do this via numerical simulation.
+
+We draw 1000 samples from a truncated lognormal distribution, and calculate the mean of those draws.  That provides a fairly accurate estimate of the mean of the truncated distribution. With 1000 samples, the error is probably dominated by
+uncertainty in the maximum likelihood estimation rather than uncertainty due to
+an insufficient sample.  Nevertheless, a larger random sample maybe needed for high precision work.
+
+## Basic Function
+Here's a function to do just that for a single distribution and cutoff value.  Note this is also a random process, so results will vary slightly if you run this code several times.  Higher sample sizes should reduce the variability, but variability is probably dominated by parameter uncertainty....  
+```{r}
+MeanTruncatedLogNormal <- function(lmu, lsigma, cutoff,  sz = 1000)
+  {
+  # Figure out haw many values to draw
+  estsample <- sz + sz / plnorm(cutoff, lmu, lsigma) 
+  # We calculate a lot of extras
+  rawsample <- rlnorm(estsample, lmu, lsigma)  
+  # Throw out all the samples that are too large
+  sample <- rawsample[rawsample<cutoff]
+  # Take the first sz of them (if there are enough....)
+  sample<- sample[1:sz]  
+  # And finally, calculate the mean
+  return(mean(sample))                                  
+  }
+
+# Lets take a look at that for a particular observation 
+MeanTruncatedLogNormal(parms$estimate[1],parms$estimate[2], demo_df[3,]$c)
+```
+
+## Vectorized function
+We use the Vectorize() function from base R to convert that into a function that can accept a vector rather than just an individual value. Note this function does not pay any attention to which observations are censored. That reflects the sequential problem solving approach I took to figuring this out, and makes the logic slightly more transparent.
+```{r}
+MeanTruncLN <- Vectorize(MeanTruncatedLogNormal, "cutoff")
+MeanTruncLN(parms$estimate[1],parms$estimate[2], demo_df$c)
+```
+
+# Put it all Together
+So now we can generate "implied" expected mean values for an entire vector of censoring thresholds, given parameters of a (single) lognormal distribution. Notice that this function can accept different detection limits, but it assumes all observations are drawn from a single lognormal distribution.
+
+We still need to combine everything, to generate a simulated data set of censored and uncensored data from which we can calculate an appropriate estimated total PCB load.
+
+We need a function that when fed censored data and the flags indicating which observations were censored, will return a modified vector of combined observations and estimates of the conditional means of censored data based on a lognormal distribution.
+
+```{r}
+SemiSimulatedLN <-function (cc, flg) {
+  r <- maxLik( lognormalloglik, start=c(-2,3), cc=cc,flg=flg)  #Calculate maximum likelihood parameter estimates
+  es <- r$estimate
+  lmu = es[1]
+  lsigma <- es[2]
+  res <- ifelse(flg, MeanTruncLN(lmu, lsigma, cc), cc)                  #Calculate a replacement vector
+  return(res)
+}
+(q <- SemiSimulatedLN (demo_df$a, demo_df$flag))
+```
+
+```{r}
+tmp <- demo_df %>% mutate(final = q )
+ggplot(tmp, aes(a,final, color = flag)) +
+  geom_abline(intercept=0, slope = 1, color = 'blue') + 
+  geom_point(alpha = 0.25, size = 3) + 
+  geom_hline(data = cens, mapping=aes(yintercept = cc)) +
+  scale_x_log10() + 
+  scale_y_log10() +
+  xlab('Original Simulated Value') +
+  ylab('Replacement Value')
+```
+
+# Comparison: Treating Censored Values Four Ways 
+```{r}
+knitr::kable(tibble(Correction = c('Reporting Limit',
+                                   'Half Reporting Limit',
+                                   'Lognormal Estimates',
+                                   'Replace with Zero'),
+                    Value = c(mean(demo_df$a),
+                              mean(ifelse(demo_df$flag,
+                                          demo_df$a/2,
+                                          demo_df$a)),
+                              mean(q),
+                              mean(ifelse(demo_df$flag,
+                                          0,
+                                          demo_df$a)))), digits = 2)
+```
+So results look appropriate, and had only a minor effect on results here.
+
+# The LCensMeans Package
+The logic of the methods described here have been built into the [LCensMeans package](https://github.com/ccb60/LCensMeans).  That package initially followed the logic described here exactly. It is, however, in active development, and several optimization and generalizations are possible.  The conceptual underpinnings however, remain the same.
+
+
+

@@ -27,7 +27,7 @@ load_cbep_fonts()
 library(LCensMeans)
 ```
 
-# Load Basic Data
+# Load Data
 ```{r load_data}
 sibfldnm <- 'Derived_Data'
 parent <- dirname(getwd())
@@ -51,7 +51,7 @@ the.data <- read_excel(paste(sibling,fn, sep='/'),
 
 ```
 
-# Chemical Parameters
+## List Chemical Parameters
 PAH Anylates are listed in a separate tab in the original Excel spreadsheet.  Here we pull them into a vector, for later use.
 ```{r load_parameter_names, warning = FALSE}
 pah.names <- read_excel(paste(sibling,fn, sep='/'),
@@ -60,7 +60,8 @@ pah.names <- read_excel(paste(sibling,fn, sep='/'),
   slice(1:16)
 (pah.names <- pah.names$PARAMETER_NAME)
 ```
-# Extract PAH Data Only
+
+## Extract PAH Data
 We filter down to selected parameters defined in the list of PAH names.  The second and third filters remove QA/QC samples.
 
 We have some duplicate samples:
@@ -95,6 +96,7 @@ pah.data <- pah.data.long %>%
                       CHRYSENE, `DIBENZ(A,H)ANTHRACENE`, FLUORANTHENE, FLUORENE,
                       `INDENO(1,2,3-CD)PYRENE`, NAPHTHALENE, PHENANTHRENE, PYRENE), na.rm = TRUE))
 ```
+
 # Exploratory Analysis
 ## Pairs Plot
 ```{r pairsplot, fig.width = 10, fig.height=8, warning=FALSE}
@@ -103,7 +105,6 @@ ggpairs(log(pah.data[3:16]), progress=FALSE, na.rm=TRUE)
 Observations:
 1.  That shows the very high correlation among all the PAHs. We need to make sure that's not due to hidden correlations of detection limits.
 2.  Distributions are not too far from lognormal, although still slightly skewed.
-
 
 ## Check for Non-detects
 There are only a few.
@@ -118,7 +119,7 @@ pah.data.long %>% select(SAMPLE_ID, PAH, censored) %>%
 ## Parralel Coordinates Plot
 ```{r parralel_lot}
 ggparcoord(log(pah.data[3:16]), scale='robust' ) + 
-theme_minimal() +
+theme_cbep() +
   theme(axis.text.x = element_text(angle = 90))
 ```
 This is just another way of showing the high level of correlation among chemical
@@ -137,7 +138,7 @@ plt <- ggplot(tmp, aes(x=as.numeric(SAMPLE_ID), y = CONCENTRATION, color = PAH))
   scale_y_log10() +
   xlab('Site ID') +
   ylab('Concentration (ppb)') +
-  theme_minimal() +
+  theme_cbep() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   theme(panel.grid = element_blank()) 
 plt
@@ -169,8 +170,7 @@ plt
 So, only a handful of non-detects, all quite low.  Other evidence shows the non-detects are all from one site....
 
 ## Alternate Estimates of Sum of PAHs
-
-We want to focus on analysis of the sum of PCBs, because all PAHs are highly correlated.  The question is, how do we best handle the non-detects.  Often in environmetnal analyses, non-detects are replaced by zero, by the detection limit, or by half the detection limit, but none of those conventions rests on strong statistical principals.  We instead implement a method that estimates the (unobserved) value of non-detects using a conditional mean of censored observations derived from a maximum likelihood procedure.
+We want to focus on analysis of the sum of PAHs, because all PAHs are highly correlated.  The question is, how do we best handle the non-detects.  Often in environmental analyses, non-detects are replaced by zero, by the detection limit, or by half the detection limit, but none of those conventions rests on strong statistical principals.  We instead implement a method that estimates the (unobserved) value of non-detects using a conditional mean of censored observations derived from a maximum likelihood procedure.
 
 The idea is to fit a maximum likelihood model to the data assuming a censored lognormal distribution.  With a lognormal density in hand, we can estimate a conditional mean of for "unobserved" observations below a the detection limit by sampling from the underlying lognormal distribution 1000 times (or more) and calculating a mean.
 
@@ -215,7 +215,7 @@ ggplot(dat2, aes(CONCENTRATION,LikCensored)) + geom_line() + geom_point(aes(colo
 The first panel shows random variation for a parameter with no detections, but variable detection limits. Note that the "corrected" estimates are all small and only vary in the fourth decimal place, well below differences that can possibly matter.
 
 # Total PAHs
-## graphic Comparing ND Methods
+## Graphic Comparing ND Methods
 ```{r total_pah_graphic}
 ggplot(res2, aes(x=totPAH))+
   geom_point(aes(y=halfDLtotPAH), color = 'red') +
@@ -233,7 +233,7 @@ ggplot(res2, aes(x=totPAH))+
   ylab('Total, Assuming half DL (red) or Max. Lik (orange)') +
   scale_y_log10(label=scales::comma) +
   scale_x_log10(label=scales::comma) +  
-  theme_minimal()
+  theme_cbep()
 ```
 
 So, we see no evidence that which estimate of non-detects we use has any impact on our conclusions.  Here, where non-detects are few, maximum likelihood estimates are close to the detection limits, which are well below most observations.

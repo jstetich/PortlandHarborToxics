@@ -4,9 +4,9 @@ Curtis C. Bohlen, Casco Bay Estuary Partnership
 7/16/2020
 
   - [Install Libraries](#install-libraries)
-  - [Load Basic Data](#load-basic-data)
-  - [Chemical Parameters](#chemical-parameters)
-  - [Extract PAH Data Only](#extract-pah-data-only)
+  - [Load Data](#load-data)
+      - [List Chemical Parameters](#list-chemical-parameters)
+      - [Extract PAH Data](#extract-pah-data)
   - [Exploratory Analysis](#exploratory-analysis)
       - [Pairs Plot](#pairs-plot)
       - [Check for Non-detects](#check-for-non-detects)
@@ -21,7 +21,7 @@ Curtis C. Bohlen, Casco Bay Estuary Partnership
       - [Applying to the PAHs data](#applying-to-the-pahs-data)
   - [Graphic Showing ND Handling](#graphic-showing-nd-handling)
   - [Total PAHs](#total-pahs)
-      - [graphic Comparing ND Methods](#graphic-comparing-nd-methods)
+      - [Graphic Comparing ND Methods](#graphic-comparing-nd-methods)
 
 <img
   src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
@@ -34,14 +34,14 @@ library(readxl)
 library(tidyverse)
 ```
 
-    ## -- Attaching packages --------------------------------------------- tidyverse 1.3.0 --
+    ## -- Attaching packages --------------------------------------- tidyverse 1.3.0 --
 
     ## v ggplot2 3.3.2     v purrr   0.3.4
     ## v tibble  3.0.3     v dplyr   1.0.0
     ## v tidyr   1.1.0     v stringr 1.4.0
     ## v readr   1.3.1     v forcats 0.5.0
 
-    ## -- Conflicts ------------------------------------------------ tidyverse_conflicts() --
+    ## -- Conflicts ------------------------------------------ tidyverse_conflicts() --
     ## x dplyr::filter() masks stats::filter()
     ## x dplyr::lag()    masks stats::lag()
 
@@ -75,7 +75,7 @@ load_cbep_fonts()
 library(LCensMeans)
 ```
 
-# Load Basic Data
+# Load Data
 
 ``` r
 sibfldnm <- 'Derived_Data'
@@ -99,7 +99,7 @@ the.data <- read_excel(paste(sibling,fn, sep='/'),
                                                   "CSP-12", "CSS-13", "CSP-14", "CSS-15")))
 ```
 
-# Chemical Parameters
+## List Chemical Parameters
 
 PAH Anylates are listed in a separate tab in the original Excel
 spreadsheet. Here we pull them into a vector, for later use.
@@ -130,7 +130,7 @@ pah.names <- read_excel(paste(sibling,fn, sep='/'),
     ## [13] "INDENO(1,2,3-CD)PYRENE" "NAPHTHALENE"            "PHENANTHRENE"          
     ## [16] "PYRENE"
 
-# Extract PAH Data Only
+## Extract PAH Data
 
 We filter down to selected parameters defined in the list of PAH names.
 The second and third filters remove QA/QC samples.
@@ -224,7 +224,7 @@ pah.data.long %>% select(SAMPLE_ID, PAH, censored) %>%
 
 ``` r
 ggparcoord(log(pah.data[3:16]), scale='robust' ) + 
-theme_minimal() +
+theme_cbep() +
   theme(axis.text.x = element_text(angle = 90))
 ```
 
@@ -247,7 +247,7 @@ plt <- ggplot(tmp, aes(x=as.numeric(SAMPLE_ID), y = CONCENTRATION, color = PAH))
   scale_y_log10() +
   xlab('Site ID') +
   ylab('Concentration (ppb)') +
-  theme_minimal() +
+  theme_cbep() +
   theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
   theme(panel.grid = element_blank()) 
 plt
@@ -313,9 +313,9 @@ non-detects are all from one site….
 
 ## Alternate Estimates of Sum of PAHs
 
-We want to focus on analysis of the sum of PCBs, because all PAHs are
+We want to focus on analysis of the sum of PAHs, because all PAHs are
 highly correlated. The question is, how do we best handle the
-non-detects. Often in environmetnal analyses, non-detects are replaced
+non-detects. Often in environmental analyses, non-detects are replaced
 by zero, by the detection limit, or by half the detection limit, but
 none of those conventions rests on strong statistical principals. We
 instead implement a method that estimates the (unobserved) value of
@@ -377,8 +377,6 @@ ggplot(dat2, aes(CONCENTRATION,LikCensored)) + geom_line() + geom_point(aes(colo
   scale_color_manual(values = cbep_colors2(), name = 'Censored') #+
 ```
 
-    ## Warning: Removed 1 row(s) containing missing values (geom_path).
-
     ## Warning: Removed 1 rows containing missing values (geom_point).
 
 ![](PAHs_handling_NDs_files/figure-gfm/another_graphic-1.png)<!-- -->
@@ -394,7 +392,7 @@ below differences that can possibly matter.
 
 # Total PAHs
 
-## graphic Comparing ND Methods
+## Graphic Comparing ND Methods
 
 ``` r
 ggplot(res2, aes(x=totPAH))+
@@ -413,7 +411,7 @@ ggplot(res2, aes(x=totPAH))+
   ylab('Total, Assuming half DL (red) or Max. Lik (orange)') +
   scale_y_log10(label=scales::comma) +
   scale_x_log10(label=scales::comma) +  
-  theme_minimal()
+  theme_cbep()
 ```
 
 ![](PAHs_handling_NDs_files/figure-gfm/total_pah_graphic-1.png)<!-- -->
