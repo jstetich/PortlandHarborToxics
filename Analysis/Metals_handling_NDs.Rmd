@@ -25,13 +25,14 @@ load_cbep_fonts()
 ```
 
 # Load Basic Data
-```{r load_data}
-sibfldnm <- 'Derived_Data'
+sibfldnm <- 'Original_Data'
+niecefldnm <- 'Final_Data_Transmittal'
 parent <- dirname(getwd())
-sibling <- file.path(parent,sibfldnm)
-fn <- 'working_data.xls'
+niece = file.path(parent,sibfldnm, niecefldnm)
 
-the_data <- read_excel(paste(sibling,fn, sep='/'), 
+fn <- "draft_Combined_data_20190917.xls"
+
+the.data <- read_excel(paste(niece, fn, sep='/'), 
     sheet = "Combined", col_types = c("skip", 
         "text", "skip", "skip", "skip", 
         "skip", "skip", "skip", "skip", 
@@ -145,7 +146,7 @@ fn= "Marine_Sediment_Screening_Values_simplified.xlsx"
 ## Convert to a look-up table
 Now, I convert the SQIRTS data to a look-up table, by converting the Chemical column to row names. While this is discouraged in the tidyverse, it is slightly more convenient to implement a look-up this way. Note that all this accomplishes is to slightly simplify how I specify which row(s) I'm interested in.  The following creates an indicator that shows whether specific measurements are above certain screening levels.
 
-our interest here focuses on the "Effects Range Low" and "Effects Range Medium" screening criteria.  WE focus on those only because we have used them in the past.
+our interest here focuses on the "Effects Range Low" and "Effects Range Medium" screening criteria.  We focus on those only because we have used them in the past, for example, in the 2017 Ramboll Environ report on tocics in Casco Bay sediments.
 
 ```{r screening_lookup_table}
 lookup <- SQUIRTS %>%
