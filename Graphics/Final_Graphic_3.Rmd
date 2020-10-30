@@ -31,7 +31,7 @@ Here we consider both and 'J' flags to be "non-detects' as both are below the re
 2. DDT concentrations from Sample CSS-15 were replicates that failed a QA/QC check.  One was a non-detect, while the other was roughly double the reporting limit.  Here we report results based on averaging imputed values of the non-detect with the observed value from the other sample.
 
 # Install Libraries
-```{r}
+```{r libraries}
 library(readxl)
 library(tidyverse)
 library(ggthemes)
@@ -47,7 +47,7 @@ library(LCensMeans)
 
 # Assemble Data
 ## Create Site Data
-```{r}
+```{r site_data}
 sitename <-  c("East End Beach", "Amethyst Lot",
                "Maine State Pier/Ocean Gateway", "Maine Wharf",
                "Portland Pier", "Chandler's Wharf",
@@ -65,13 +65,21 @@ site_info <- tibble(SAMPLE_ID,sitename)
 rm(SAMPLE_ID, sitename)
 ```
 
-## Lists of Names of Parameters
-```{r}
+## Folder References
+```{r folders}
 sibfldnm <- 'Original_Data'
 niecefldnm <- 'Final_Data_Transmittal'
 parent <- dirname(getwd())
 niece = file.path(parent,sibfldnm, niecefldnm)
 
+dir.create(file.path(getwd(), 'figures'), showWarnings = FALSE)
+```
+
+## List of Names of Parameters
+We need lists of names of parameters is specific categories to facilitate later
+sums, totals, and graphics.  The Parameters are grouped in categories in the 
+secondary tables in the source Excel data.
+```{r parameter_names}
 fn <- "draft_Combined_data_20190917.xls"
 
 sed_names <- c('% COARSE SAND', '% FINE SAND', '% MEDIUM SAND',
@@ -107,13 +115,8 @@ pesticide_names <- pesticide_names$PARAMETER_NAME
 
 ```
 
-## Load Data
-```{r}
-sibfldnm <- 'Original_Data'
-niecefldnm <- 'Final_Data_Transmittal'
-parent <- dirname(getwd())
-niece = file.path(parent,sibfldnm, niecefldnm)
-
+## Load Core Data
+```{r load_data}
 fn <- "draft_Combined_data_20190917.xls"
 
 the_data <- read_excel(paste(niece,fn, sep='/'), 
@@ -142,14 +145,19 @@ the_data <- read_excel(paste(niece,fn, sep='/'),
 ```
 
 ## Assemble Data in CBEP Preferred Form
-We filter data to eliminate QA/QC samples, then combine Reporting Limits and Observed Concentrations into data on concentrations and a flag indicating which are censored values.
-```{r}
+We filter data to eliminate QA/QC samples, then combine Reporting Limits and
+Observed Concentrations into data on concentrations. We then add a flag
+indicating which are censored values.  Finally, we group data into groups, and
+use the groups.
+```{r format_data_for_nd}
 sed_data_long <- the_data %>% 
   filter (the_data$PARAMETER_NAME %in% parmnames) %>%
   filter(is.na(`%_RECOVERY`)) %>%
   filter(SAMPLE_ID != 'QC') %>%
-  mutate(CONCENTRATION = ifelse(is.na(CONCENTRATION) & LAB_QUALIFIER %in% c('U', 'J'),
-                                REPORTING_LIMIT, CONCENTRATION)) %>%
+  mutate(CONCENTRATION = ifelse(is.na(CONCENTRATION) &
+                                  LAB_QUALIFIER %in% c('U', 'J'),
+                                REPORTING_LIMIT,
+                                CONCENTRATION)) %>%
   group_by(SAMPLE_ID, PARAMETER_NAME) %>%
   summarize(CONCENTRATION = mean(CONCENTRATION, na.rm=TRUE),
             samples = n(),
@@ -167,40 +175,52 @@ sed_data_long <- the_data %>%
                                      5,0)))))) %>%
   mutate(cgroup = factor(cgroup, labels = c('Sediment', 'Metals', 'PAHs',
                                          'PCBs', 'Pesticides')))  %>% 
-  mutate(Contaminant = fct_reorder(Contaminant, as.numeric(Contaminant))) %>%
   mutate(Contaminant = fct_reorder(Contaminant, as.numeric(cgroup)))
 
 levels(sed_data_long$Contaminant)
 ```
 
 ### A Check for Half Censored Observations
-Since in a few cases, we averaged two samples together, it is possible that we have averaged a non-detect with a detection.  It turns out we did, but just once.
-```{r}
+Since in a few cases, we averaged two samples together, it is possible that we
+have averaged a non-detect with a detection.  It turns out we did, but just
+once.
+```{r check_half_censored}
 sum(sed_data_long$censored> 0 & sed_data_long$censored<sed_data_long$samples)
 
-sed_data_long[which(sed_data_long$censored> 0 & sed_data_long$censored<sed_data_long$samples),]
+sed_data_long[which(sed_data_long$censored> 0 &
+                      sed_data_long$censored<sed_data_long$samples),]
 
 the_data[the_data$SAMPLE_ID=='CSS-15' & the_data$PARAMETER_NAME=="4,4'-DDT",]
 ```
-Note that these two DDT results were flagged as problematic because differences between the two observations were greater than an acceptable relative percent difference. That does not engender great confidence in the data....
+Note that these two DDT results were flagged as problematic because differences
+between the two observations were greater than an acceptable relative percent
+difference. That does not engender great confidence in the data....
 
-We have to pick this up again later, when we calculate values for Pesticide Totals.
-
-
+We have to pick this up again later, when we calculate values for Pesticide
+Totals.
 
 ## Assemble Data with Maximum Likelihood Estimates of Non-detects
+Here we replace non-detect with estimates of the conditional mean of
+non-detects, based on a maximum likelihood procedure under a longnormal
+distribution.
+
 ### Metals
-No reorganization needed. All metals are below levels of concern, and there are no suitable aggregate screening levels for metals or sum of metals.  So there is little point in reporting specific values, and no easy way to summarize results. We could show one or two metals of  interest -- like Mercury -- or just report that all are below levels of concern.  WE chose the latter option, so don't include metals on the graphics.
+No reorganization needed. All metals are below levels of concern, and there are
+no suitable aggregate screening levels for metals or sum of metals.  So there is
+little point in reporting specific values, and no easy way to summarize results.
+We could show one or two metals of  interest -- like Mercury -- or just report
+that all are below levels of concern.  We chose the latter option, so don't
+include metals on the graphics.
 
 ### PAHs
-```{r}
+```{r pah_nds}
 pah_res<- sed_data_long %>%
   filter (cgroup =='PAHs') %>%
 
   mutate(censored = censored>0) %>%
 
   group_by(Contaminant) %>%
-  mutate(LikCensored = sub_conditional_means(CONCENTRATION, censored)) %>%
+  mutate(LikCensored = sub_cmeans(CONCENTRATION, censored)) %>%
   ungroup()  %>%
   group_by(SAMPLE_ID) %>%
   summarize(LNtotPAH = sum(LikCensored),
@@ -208,7 +228,7 @@ pah_res<- sed_data_long %>%
 ```
 
 ### PCBs
-```{r}
+```{r pcb_nds}
 pcb_res<- sed_data_long %>%
   filter (cgroup =='PCBs') %>%
   
@@ -218,7 +238,7 @@ pcb_res<- sed_data_long %>%
   mutate(censored = censored>0) %>%
 
   group_by(Contaminant) %>%
-  mutate(LikCensored = sub_conditional_means(CONCENTRATION, censored)) %>%
+  mutate(LikCensored = sub_cmeans(CONCENTRATION, censored)) %>%
   ungroup()  %>%
   group_by(SAMPLE_ID) %>%
   summarize(LNtotPCB = sum(LikCensored),
@@ -226,17 +246,25 @@ pcb_res<- sed_data_long %>%
 ```
 
 ### DDT Residues
-We report only on Total DDT Residues.  Other pesticides were observed too rarely to be worth reporting on.
+We report only on Total DDT Residues.  Other pesticides were observed too rarely
+to be worth reporting.
 
 #### Correcting for Half non-detect
-When we average across the two values, we are averaging a non-detect with a significantly higher observation.  This only happened once in these data, in the DDT results for Sample CSS-15.
+When we average across the two values, we are averaging a non-detect with a
+significantly higher observation.  This only happened once in these data, in the
+DDT results for Sample CSS-15.
 
-To be accurate, we need to calculate estimates of the censored values (ND, Half ND and Maximum Likelihood) on the original raw data and average the results, rather than calculate estimates based on an average of an observation and a reporting limit.
+To be accurate, we need to calculate estimates of the censored values (ND, Half
+ND and Maximum Likelihood) on the original raw data and average the results,
+rather than calculate estimates based on an average of an observation and a
+reporting limit.
 
-Obviously,if we are looking at the full detection limit, the average of a sum is the sum of the averages, and it makes no difference, but it should matter for the other two estimators, especially for the maximum likelihood estimator.
+If we are looking at the full detection limit, the average of a sum is
+the sum of the averages, and it makes no difference, but it should matter for
+the other two estimators, especially for the maximum likelihood estimator.
 
 #### Calculate Average by Maximum Likelihood Estimator
-```{r}
+```{r mean_mle}
 est <- the_data %>%
   filter(PARAMETER_NAME=="4,4'-DDT") %>%
   filter(is.na(`%_RECOVERY`)) %>%
@@ -244,7 +272,7 @@ est <- the_data %>%
   select(SAMPLE_ID, CONCENTRATION, REPORTING_LIMIT, LAB_QUALIFIER) %>%
   mutate(censored = LAB_QUALIFIER %in% c('U', 'J')) %>%
   mutate(CONCENTRATION = ifelse(censored, REPORTING_LIMIT, CONCENTRATION)) %>%
-  mutate(lnest = sub_conditional_means(CONCENTRATION, censored)) %>%
+  mutate(lnest = sub_cmeans(CONCENTRATION, censored)) %>%
   filter(SAMPLE_ID == 'CSS-15') %>%
   pull(lnest)
 (mle <- mean(est))
@@ -252,12 +280,12 @@ rm(est)
 ```
 
 #### Assemble Pesticides Data
-```{r}
+```{r pesticides_nds}
 pests_data_long <- sed_data_long %>%
   filter (cgroup =='Pesticides') %>%
   mutate(censored = censored>0) %>%
   group_by(Contaminant) %>%
-  mutate(LikCensored = sub_conditional_means(CONCENTRATION, censored)) %>%
+  mutate(LikCensored = sub_cmeans(CONCENTRATION, censored)) %>%
   ungroup() %>%
   mutate(LikCensored = ifelse(SAMPLE_ID =='CSS-15' & Contaminant =="4,4'-DDT",
                               mle, LikCensored))
@@ -265,7 +293,7 @@ rm(mle)
 ```
 
 #### Assemble Final DDT Residue Data
-```{r}
+```{r correct_ddt}
 pesticide_res <- pests_data_long %>%
   group_by(SAMPLE_ID) %>%
   summarize(LNtotDDT = sum(LikCensored),
@@ -274,7 +302,7 @@ pesticide_res <- pests_data_long %>%
 
 # Generate Final Data for Plotting and Maps
 ## Combine PAH, PCB, and DDT Data
-```{r}
+```{r data_for_plotting}
 res <- site_info %>%
   left_join(pah_res,       by = "SAMPLE_ID") %>%
   left_join(pcb_res,       by = "SAMPLE_ID") %>%
@@ -292,16 +320,15 @@ res <- site_info %>%
                                          'Total PCBs')))
 ```
 
-
 # Cleanup
-```{r}
+```{r cleanup}
 rm(parmnames, sed_names, metal_names, pah_names, pah_res, pcb_names, pcb_res,
    pesticide_names, pesticide_res, pests_data_long)
 rm(the_data, sed_data_long)
 ```
 
 # Build Screening Levels Tibble
-```{r}
+```{r screening_levels}
 pcb <- c(22.7, 180)
 pah <- c(4022, 44792)
 ddt <- c(1.58, 46.1)
@@ -313,7 +340,7 @@ sl <- tibble(Contaminant = rep(c('DDT Residues',
 ```
 
 ## Generate Screening Level Flags
-```{r}
+```{r screening_flags}
 erl <- sl %>% filter(Threshold == 'ERL') %>% select(-Threshold)
 erm <- sl %>% filter(Threshold == 'ERM') %>% select(-Threshold)
 res_screen <- res %>%
@@ -328,10 +355,10 @@ res_screen <- res %>%
 ```
 
 ## A Wide Version for Export to GIS
-The function pivot_wider accepts two data columns, and handles them intelligently,
-but the default names are awkward here.  We use "rename_at only so we don't have 
-to exaclty match the default name by using "rename()".
-```{r}
+The function pivot_wider accepts two data columns, and handles them
+intelligently, but the default names are awkward here.  We use "rename_at only
+so we don't have to exactly match the default name by using "rename()".
+```{r export_for_GIS}
 res_screen_wide <- res_screen %>%
   pivot_wider(names_from = Contaminant, values_from = c(MLE,SL),
               id_cols = c(SAMPLE_ID, sitename)) %>%
@@ -339,13 +366,12 @@ res_screen_wide <- res_screen %>%
   rename_at(5, ~'DDTs') %>%
   rename_at(6:7, ~paste0(substr(.,nchar(.)-3, nchar(.)), 'SL')) %>%
   rename_at(8, ~'DDTsSL')
-write.csv(res_screen_wide,'MLE Results.csv')
+write.csv(res_screen_wide,'MLE_Results_Wide.csv')
 ```
 
-
-# Graphic
+# Graphic Development
 ## Draft
-```{r fig.width = 6, fig.height=5}
+```{r draft_graphic, fig.width = 6, fig.height=5}
 plt <- ggplot(res_screen, aes(Contaminant, MLE)) + 
   #geom_boxplot() +
   geom_point(aes(color = SL), size = 3, alpha = 0.5) +
@@ -364,7 +390,11 @@ plt <- ggplot(res_screen, aes(Contaminant, MLE)) +
   theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust=1)) 
 plt
 ```
-So, what that shows is that despite DDT being outlawed for a generation, concentrations of DDT residues in Portland Harbor are well above levels of concern.  Similarly, PAHs are usually above conservative screening levels, and many sites had levels of PCBs above levels of concern.
+
+So, what that shows is that despite DDT being outlawed for a generation,
+concentrations of DDT residues in Portland Harbor are well above levels of
+concern.  Similarly, PAHs are usually above conservative screening levels, and
+many sites had levels of PCBs above levels of concern.
 
 ## Reorder Factors
 ```{r}
@@ -375,8 +405,9 @@ levels(tmp$Contaminant)
 tmp_sl <- sl %>%
    mutate(Contaminant = fct_relevel(Contaminant, 'Total PAHs', 'Total PCBs'))
 ```
+
 ## Principal Graphic
-```{r fig.width = 6, fig.height=5}
+```{r final_graphic, fig.width = 6, fig.height=5}
 plt <- ggplot(tmp, aes(Contaminant, MLE)) + 
   geom_point(aes(color = SL), size = 4, alpha = 0.5) +
   scale_y_log10(labels=scales::comma) +
@@ -387,13 +418,28 @@ plt <- ggplot(tmp, aes(Contaminant, MLE)) +
   theme_cbep() +
   theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust=1)) 
 plt
-ggsave('Portland Harbor Contaminants.png', type = 'cairo', width = 6, height = 5)
-ggsave('Portland Harbor Contaminants.pdf', device = cairo_pdf, width = 6, height = 5)
+#ggsave('figures/Portland Harbor Contaminants.png', type = 'cairo',
+#       width = 6, height = 5)
+ggsave('figures/Portland Harbor Contaminants.pdf', device = cairo_pdf,
+       width = 6, height = 5)
 ```
-## Alternate Form
-```{r fig.width = 6, fig.height=5}
-plt + geom_line( aes(as.numeric(Contaminant), MLE, group = SAMPLE_ID), alpha = 0.2)
 
-
+## Alternate Form Showing Correlated Levels
+```{r alternate_graphic, fig.width = 6, fig.height=5}
+plt + geom_line(aes(as.numeric(Contaminant), MLE,
+                    group = SAMPLE_ID), alpha = 0.2)
 ```
+
 That might work in a powerpoint, but it's a bit noisy for SotB.
+
+
+# Number and Proportion of Exceedences Table
+```{r}
+res_screen %>%
+  group_by(Contaminant, SL) %>%
+  summarize(number = n(), .groups = 'drop_last')
+```
+
+
+
+

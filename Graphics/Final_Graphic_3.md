@@ -8,8 +8,9 @@ Curtis C. Bohlen, Casco Bay Estuary Partnership
   - [Install Libraries](#install-libraries)
   - [Assemble Data](#assemble-data)
       - [Create Site Data](#create-site-data)
-      - [Lists of Names of Parameters](#lists-of-names-of-parameters)
-      - [Load Data](#load-data)
+      - [Folder References](#folder-references)
+      - [List of Names of Parameters](#list-of-names-of-parameters)
+      - [Load Core Data](#load-core-data)
       - [Assemble Data in CBEP Preferred
         Form](#assemble-data-in-cbep-preferred-form)
           - [A Check for Half Censored
@@ -29,11 +30,14 @@ Curtis C. Bohlen, Casco Bay Estuary Partnership
         Flags](#generate-screening-level-flags)
       - [A Wide Version for Export to
         GIS](#a-wide-version-for-export-to-gis)
-  - [Graphic](#graphic)
+  - [Graphic Development](#graphic-development)
       - [Draft](#draft)
       - [Reorder Factors](#reorder-factors)
       - [Principal Graphic](#principal-graphic)
-      - [Alternate Form](#alternate-form)
+      - [Alternate Form Showing Correlated
+        Levels](#alternate-form-showing-correlated-levels)
+  - [Number and Proportion of Exceedences
+    Table](#number-and-proportion-of-exceedences-table)
 
 <img
   src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
@@ -86,14 +90,14 @@ library(readxl)
 library(tidyverse)
 ```
 
-    ## -- Attaching packages --------------------------------------------------------------------------------------------------------------- tidyverse 1.3.0 --
+    ## -- Attaching packages --------------------------------------------------------------------------------------- tidyverse 1.3.0 --
 
     ## v ggplot2 3.3.2     v purrr   0.3.4
-    ## v tibble  3.0.3     v dplyr   1.0.0
-    ## v tidyr   1.1.0     v stringr 1.4.0
+    ## v tibble  3.0.3     v dplyr   1.0.2
+    ## v tidyr   1.1.2     v stringr 1.4.0
     ## v readr   1.3.1     v forcats 0.5.0
 
-    ## -- Conflicts ------------------------------------------------------------------------------------------------------------------ tidyverse_conflicts() --
+    ## -- Conflicts ------------------------------------------------------------------------------------------ tidyverse_conflicts() --
     ## x dplyr::filter() masks stats::filter()
     ## x dplyr::lag()    masks stats::lag()
 
@@ -149,7 +153,7 @@ site_info <- tibble(SAMPLE_ID,sitename)
 rm(SAMPLE_ID, sitename)
 ```
 
-## Lists of Names of Parameters
+## Folder References
 
 ``` r
 sibfldnm <- 'Original_Data'
@@ -157,6 +161,16 @@ niecefldnm <- 'Final_Data_Transmittal'
 parent <- dirname(getwd())
 niece = file.path(parent,sibfldnm, niecefldnm)
 
+dir.create(file.path(getwd(), 'figures'), showWarnings = FALSE)
+```
+
+## List of Names of Parameters
+
+We need lists of names of parameters is specific categories to
+facilitate later sums, totals, and graphics. The Parameters are grouped
+in categories in the secondary tables in the source Excel data.
+
+``` r
 fn <- "draft_Combined_data_20190917.xls"
 
 sed_names <- c('% COARSE SAND', '% FINE SAND', '% MEDIUM SAND',
@@ -268,14 +282,9 @@ pesticide_names <- pesticide_names$PARAMETER_NAME
     ## [61] "CIS-NONACHLOR"               "DIELDRIN"                   
     ## [63] "ENDOSULFAN I"
 
-## Load Data
+## Load Core Data
 
 ``` r
-sibfldnm <- 'Original_Data'
-niecefldnm <- 'Final_Data_Transmittal'
-parent <- dirname(getwd())
-niece = file.path(parent,sibfldnm, niecefldnm)
-
 fn <- "draft_Combined_data_20190917.xls"
 
 the_data <- read_excel(paste(niece,fn, sep='/'), 
@@ -306,16 +315,19 @@ the_data <- read_excel(paste(niece,fn, sep='/'),
 ## Assemble Data in CBEP Preferred Form
 
 We filter data to eliminate QA/QC samples, then combine Reporting Limits
-and Observed Concentrations into data on concentrations and a flag
-indicating which are censored values.
+and Observed Concentrations into data on concentrations. We then add a
+flag indicating which are censored values. Finally, we group data into
+groups, and use the groups.
 
 ``` r
 sed_data_long <- the_data %>% 
   filter (the_data$PARAMETER_NAME %in% parmnames) %>%
   filter(is.na(`%_RECOVERY`)) %>%
   filter(SAMPLE_ID != 'QC') %>%
-  mutate(CONCENTRATION = ifelse(is.na(CONCENTRATION) & LAB_QUALIFIER %in% c('U', 'J'),
-                                REPORTING_LIMIT, CONCENTRATION)) %>%
+  mutate(CONCENTRATION = ifelse(is.na(CONCENTRATION) &
+                                  LAB_QUALIFIER %in% c('U', 'J'),
+                                REPORTING_LIMIT,
+                                CONCENTRATION)) %>%
   group_by(SAMPLE_ID, PARAMETER_NAME) %>%
   summarize(CONCENTRATION = mean(CONCENTRATION, na.rm=TRUE),
             samples = n(),
@@ -333,7 +345,6 @@ sed_data_long <- the_data %>%
                                      5,0)))))) %>%
   mutate(cgroup = factor(cgroup, labels = c('Sediment', 'Metals', 'PAHs',
                                          'PCBs', 'Pesticides')))  %>% 
-  mutate(Contaminant = fct_reorder(Contaminant, as.numeric(Contaminant))) %>%
   mutate(Contaminant = fct_reorder(Contaminant, as.numeric(cgroup)))
 ```
 
@@ -388,7 +399,8 @@ sum(sed_data_long$censored> 0 & sed_data_long$censored<sed_data_long$samples)
     ## [1] 1
 
 ``` r
-sed_data_long[which(sed_data_long$censored> 0 & sed_data_long$censored<sed_data_long$samples),]
+sed_data_long[which(sed_data_long$censored> 0 &
+                      sed_data_long$censored<sed_data_long$samples),]
 ```
 
     ## # A tibble: 1 x 6
@@ -424,6 +436,10 @@ Pesticide Totals.
 
 ## Assemble Data with Maximum Likelihood Estimates of Non-detects
 
+Here we replace non-detect with estimates of the conditional mean of
+non-detects, based on a maximum likelihood procedure under a longnormal
+distribution.
+
 ### Metals
 
 No reorganization needed. All metals are below levels of concern, and
@@ -431,7 +447,7 @@ there are no suitable aggregate screening levels for metals or sum of
 metals. So there is little point in reporting specific values, and no
 easy way to summarize results. We could show one or two metals of
 interest – like Mercury – or just report that all are below levels of
-concern. WE chose the latter option, so don’t include metals on the
+concern. We chose the latter option, so don’t include metals on the
 graphics.
 
 ### PAHs
@@ -443,7 +459,7 @@ pah_res<- sed_data_long %>%
   mutate(censored = censored>0) %>%
 
   group_by(Contaminant) %>%
-  mutate(LikCensored = sub_conditional_means(CONCENTRATION, censored)) %>%
+  mutate(LikCensored = sub_cmeans(CONCENTRATION, censored)) %>%
   ungroup()  %>%
   group_by(SAMPLE_ID) %>%
   summarize(LNtotPAH = sum(LikCensored),
@@ -462,7 +478,7 @@ pcb_res<- sed_data_long %>%
   mutate(censored = censored>0) %>%
 
   group_by(Contaminant) %>%
-  mutate(LikCensored = sub_conditional_means(CONCENTRATION, censored)) %>%
+  mutate(LikCensored = sub_cmeans(CONCENTRATION, censored)) %>%
   ungroup()  %>%
   group_by(SAMPLE_ID) %>%
   summarize(LNtotPCB = sum(LikCensored),
@@ -472,7 +488,7 @@ pcb_res<- sed_data_long %>%
 ### DDT Residues
 
 We report only on Total DDT Residues. Other pesticides were observed too
-rarely to be worth reporting on.
+rarely to be worth reporting.
 
 #### Correcting for Half non-detect
 
@@ -485,9 +501,9 @@ To be accurate, we need to calculate estimates of the censored values
 average the results, rather than calculate estimates based on an average
 of an observation and a reporting limit.
 
-Obviously,if we are looking at the full detection limit, the average of
-a sum is the sum of the averages, and it makes no difference, but it
-should matter for the other two estimators, especially for the maximum
+If we are looking at the full detection limit, the average of a sum is
+the sum of the averages, and it makes no difference, but it should
+matter for the other two estimators, especially for the maximum
 likelihood estimator.
 
 #### Calculate Average by Maximum Likelihood Estimator
@@ -500,13 +516,13 @@ est <- the_data %>%
   select(SAMPLE_ID, CONCENTRATION, REPORTING_LIMIT, LAB_QUALIFIER) %>%
   mutate(censored = LAB_QUALIFIER %in% c('U', 'J')) %>%
   mutate(CONCENTRATION = ifelse(censored, REPORTING_LIMIT, CONCENTRATION)) %>%
-  mutate(lnest = sub_conditional_means(CONCENTRATION, censored)) %>%
+  mutate(lnest = sub_cmeans(CONCENTRATION, censored)) %>%
   filter(SAMPLE_ID == 'CSS-15') %>%
   pull(lnest)
 (mle <- mean(est))
 ```
 
-    ## [1] 0.4505956
+    ## [1] 0.4491413
 
 ``` r
 rm(est)
@@ -519,7 +535,7 @@ pests_data_long <- sed_data_long %>%
   filter (cgroup =='Pesticides') %>%
   mutate(censored = censored>0) %>%
   group_by(Contaminant) %>%
-  mutate(LikCensored = sub_conditional_means(CONCENTRATION, censored)) %>%
+  mutate(LikCensored = sub_cmeans(CONCENTRATION, censored)) %>%
   ungroup() %>%
   mutate(LikCensored = ifelse(SAMPLE_ID =='CSS-15' & Contaminant =="4,4'-DDT",
                               mle, LikCensored))
@@ -598,7 +614,7 @@ res_screen <- res %>%
 
 The function pivot\_wider accepts two data columns, and handles them
 intelligently, but the default names are awkward here. We use
-“rename\_at only so we don’t have to exaclty match the default name by
+“rename\_at only so we don’t have to exactly match the default name by
 using”rename()".
 
 ``` r
@@ -609,10 +625,10 @@ res_screen_wide <- res_screen %>%
   rename_at(5, ~'DDTs') %>%
   rename_at(6:7, ~paste0(substr(.,nchar(.)-3, nchar(.)), 'SL')) %>%
   rename_at(8, ~'DDTsSL')
-write.csv(res_screen_wide,'MLE Results.csv')
+write.csv(res_screen_wide,'MLE_Results_Wide.csv')
 ```
 
-# Graphic
+# Graphic Development
 
 ## Draft
 
@@ -636,10 +652,11 @@ plt <- ggplot(res_screen, aes(Contaminant, MLE)) +
 plt
 ```
 
-    ## Warning: Removed 2 rows containing missing values (geom_point).
+    ## Warning: Removed 1 rows containing missing values (geom_point).
 
-![](Final_Graphic_3_files/figure-gfm/unnamed-chunk-17-1.png)<!-- --> So,
-what that shows is that despite DDT being outlawed for a generation,
+![](Final_Graphic_3_files/figure-gfm/draft_graphic-1.png)<!-- -->
+
+So, what that shows is that despite DDT being outlawed for a generation,
 concentrations of DDT residues in Portland Harbor are well above levels
 of concern. Similarly, PAHs are usually above conservative screening
 levels, and many sites had levels of PCBs above levels of concern.
@@ -674,31 +691,50 @@ plt <- ggplot(tmp, aes(Contaminant, MLE)) +
 plt
 ```
 
-    ## Warning: Removed 2 rows containing missing values (geom_point).
+    ## Warning: Removed 1 rows containing missing values (geom_point).
 
-![](Final_Graphic_3_files/figure-gfm/unnamed-chunk-19-1.png)<!-- -->
-
-``` r
-ggsave('Portland Harbor Contaminants.png', type = 'cairo', width = 6, height = 5)
-```
-
-    ## Warning: Removed 2 rows containing missing values (geom_point).
+![](Final_Graphic_3_files/figure-gfm/final_graphic-1.png)<!-- -->
 
 ``` r
-ggsave('Portland Harbor Contaminants.pdf', device = cairo_pdf, width = 6, height = 5)
+#ggsave('figures/Portland Harbor Contaminants.png', type = 'cairo',
+#       width = 6, height = 5)
+ggsave('figures/Portland Harbor Contaminants.pdf', device = cairo_pdf,
+       width = 6, height = 5)
 ```
 
-    ## Warning: Removed 2 rows containing missing values (geom_point).
+    ## Warning: Removed 1 rows containing missing values (geom_point).
 
-## Alternate Form
+## Alternate Form Showing Correlated Levels
 
 ``` r
-plt + geom_line( aes(as.numeric(Contaminant), MLE, group = SAMPLE_ID), alpha = 0.2)
+plt + geom_line(aes(as.numeric(Contaminant), MLE,
+                    group = SAMPLE_ID), alpha = 0.2)
 ```
 
-    ## Warning: Removed 2 rows containing missing values (geom_point).
+    ## Warning: Removed 1 rows containing missing values (geom_point).
 
-    ## Warning: Removed 1 row(s) containing missing values (geom_path).
+![](Final_Graphic_3_files/figure-gfm/alternate_graphic-1.png)<!-- -->
 
-![](Final_Graphic_3_files/figure-gfm/unnamed-chunk-20-1.png)<!-- -->
 That might work in a powerpoint, but it’s a bit noisy for SotB.
+
+# Number and Proportion of Exceedences Table
+
+``` r
+res_screen %>%
+  group_by(Contaminant, SL) %>%
+  summarize(number = n(), .groups = 'drop_last')
+```
+
+    ## # A tibble: 9 x 3
+    ## # Groups:   Contaminant [3]
+    ##   Contaminant  SL                  number
+    ##   <fct>        <fct>                <int>
+    ## 1 DDT Residues Between ERL and ERM      8
+    ## 2 DDT Residues Above ERM                8
+    ## 3 Total PAHs   Below ERL                3
+    ## 4 Total PAHs   Between ERL and ERM      6
+    ## 5 Total PAHs   Above ERM                7
+    ## 6 Total PCBs   Below ERL                7
+    ## 7 Total PCBs   Between ERL and ERM      6
+    ## 8 Total PCBs   Above ERM                2
+    ## 9 Total PCBs   <NA>                     1
