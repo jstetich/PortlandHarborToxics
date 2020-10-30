@@ -433,11 +433,20 @@ plt + geom_line(aes(as.numeric(Contaminant), MLE,
 That might work in a powerpoint, but it's a bit noisy for SotB.
 
 
-# Number and Proportion of Exceedences Table
+# Number and Proportion of Exceedences Fpr Possible Table
 ```{r}
 res_screen %>%
   group_by(Contaminant, SL) %>%
-  summarize(number = n(), .groups = 'drop_last')
+  summarize(number = n(), .groups = 'drop_last') %>%
+  pivot_wider(Contaminant, names_from = SL, values_from = number) %>%
+  select(-`NA`) %>%
+  relocate(`Below ERL`, .after = Contaminant) %>%
+  rowwise() %>%
+  mutate(Total = sum(`Between ERL and ERM`, `Above ERM`,
+                     `Below ERL`, na.rm = TRUE)) %>%
+  ungroup() %>%
+  knitr::kable()
+  
 ```
 
 

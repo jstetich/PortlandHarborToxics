@@ -36,8 +36,8 @@ Curtis C. Bohlen, Casco Bay Estuary Partnership
       - [Principal Graphic](#principal-graphic)
       - [Alternate Form Showing Correlated
         Levels](#alternate-form-showing-correlated-levels)
-  - [Number and Proportion of Exceedences
-    Table](#number-and-proportion-of-exceedences-table)
+  - [Number and Proportion of Exceedences Fpr Possible
+    Table](#number-and-proportion-of-exceedences-fpr-possible-table)
 
 <img
   src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
@@ -522,7 +522,7 @@ est <- the_data %>%
 (mle <- mean(est))
 ```
 
-    ## [1] 0.4491413
+    ## [1] 0.4458494
 
 ``` r
 rm(est)
@@ -717,24 +717,24 @@ plt + geom_line(aes(as.numeric(Contaminant), MLE,
 
 That might work in a powerpoint, but it’s a bit noisy for SotB.
 
-# Number and Proportion of Exceedences Table
+# Number and Proportion of Exceedences Fpr Possible Table
 
 ``` r
 res_screen %>%
   group_by(Contaminant, SL) %>%
-  summarize(number = n(), .groups = 'drop_last')
+  summarize(number = n(), .groups = 'drop_last') %>%
+  pivot_wider(Contaminant, names_from = SL, values_from = number) %>%
+  select(-`NA`) %>%
+  relocate(`Below ERL`, .after = Contaminant) %>%
+  rowwise() %>%
+  mutate(Total = sum(`Between ERL and ERM`, `Above ERM`,
+                     `Below ERL`, na.rm = TRUE)) %>%
+  ungroup() %>%
+  knitr::kable()
 ```
 
-    ## # A tibble: 9 x 3
-    ## # Groups:   Contaminant [3]
-    ##   Contaminant  SL                  number
-    ##   <fct>        <fct>                <int>
-    ## 1 DDT Residues Between ERL and ERM      8
-    ## 2 DDT Residues Above ERM                8
-    ## 3 Total PAHs   Below ERL                3
-    ## 4 Total PAHs   Between ERL and ERM      6
-    ## 5 Total PAHs   Above ERM                7
-    ## 6 Total PCBs   Below ERL                7
-    ## 7 Total PCBs   Between ERL and ERM      6
-    ## 8 Total PCBs   Above ERM                2
-    ## 9 Total PCBs   <NA>                     1
+| Contaminant  | Below ERL | Between ERL and ERM | Above ERM | Total |
+| :----------- | --------: | ------------------: | --------: | ----: |
+| DDT Residues |        NA |                   8 |         8 |    16 |
+| Total PAHs   |         3 |                   6 |         7 |    16 |
+| Total PCBs   |         7 |                   6 |         2 |    15 |
