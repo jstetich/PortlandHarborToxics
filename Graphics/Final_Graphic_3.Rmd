@@ -1,7 +1,7 @@
 ---
 title: "Producing Graphics For Portland Sediment Toxicity Data"
 author: "Curtis C. Bohlen, Casco Bay Estuary Partnership"
-date: "7/16/2020"
+date: "4/01/2021"
 output:
   github_document:
     toc: true
@@ -13,7 +13,7 @@ output:
   src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
   style="position:absolute;top:10px;right:50px;" />
 
-## Strategy
+# Strategy
 Overall, we want a visually simple graphic that captures the most important aspects of contamination in Portland Harbor.  From other analyses, we know that 
 1.  Metals levels are consistently below screening levels.
 2.  Most pesticide residues were never or almost never detected, the only exceptions being the DDT residues.
@@ -26,7 +26,7 @@ The data is complicated by the presence of many non-detects.  Here, we handle no
 
 Here we consider both and 'J' flags to be "non-detects' as both are below the reporting limits.  A more sophisticated analysis, with more data might model 'J' and 'U' flags differently, but here we combine them.
 
-### Special Considerations
+## Special Considerations
 1.  Reporting limits for organic contaminants from sample CSP-8 were exceptionally high.  For PCBs the reporting limit was sufficiently high to bias any approach to estimating PCB loads, so we delete this point from consideration
 2. DDT concentrations from Sample CSS-15 were replicates that failed a QA/QC check.  One was a non-detect, while the other was roughly double the reporting limit.  Here we report results based on averaging imputed values of the non-detect with the observed value from the other sample.
 
@@ -204,14 +204,6 @@ Here we replace non-detect with estimates of the conditional mean of
 non-detects, based on a maximum likelihood procedure under a longnormal
 distribution.
 
-### Metals
-No reorganization needed. All metals are below levels of concern, and there are
-no suitable aggregate screening levels for metals or sum of metals.  So there is
-little point in reporting specific values, and no easy way to summarize results.
-We could show one or two metals of  interest -- like Mercury -- or just report
-that all are below levels of concern.  We chose the latter option, so don't
-include metals on the graphics.
-
 ### PAHs
 ```{r pah_nds}
 pah_res<- sed_data_long %>%
@@ -278,7 +270,6 @@ est <- the_data %>%
 (mle <- mean(est))
 rm(est)
 ```
-
 #### Assemble Pesticides Data
 ```{r pesticides_nds}
 pests_data_long <- sed_data_long %>%
@@ -300,8 +291,8 @@ pesticide_res <- pests_data_long %>%
             .groups = 'drop')
 ```
 
-# Generate Final Data for Plotting and Maps
-## Combine PAH, PCB, and DDT Data
+# Organic Contaminants
+## Combine Data
 ```{r data_for_plotting}
 res <- site_info %>%
   left_join(pah_res,       by = "SAMPLE_ID") %>%
@@ -324,10 +315,10 @@ res <- site_info %>%
 ```{r cleanup}
 rm(parmnames, sed_names, metal_names, pah_names, pah_res, pcb_names, pcb_res,
    pesticide_names, pesticide_res, pests_data_long)
-rm(the_data, sed_data_long)
+rm(the_data)
 ```
 
-# Build Screening Levels Tibble
+## Build Screening Levels Tibble
 ```{r screening_levels}
 pcb <- c(22.7, 180)
 pah <- c(4022, 44792)
@@ -339,7 +330,7 @@ sl <- tibble(Contaminant = rep(c('DDT Residues',
              Value = c(ddt,pah, pcb))
 ```
 
-## Generate Screening Level Flags
+### Generate Screening Level Flags
 ```{r screening_flags}
 erl <- sl %>% filter(Threshold == 'ERL') %>% select(-Threshold)
 erm <- sl %>% filter(Threshold == 'ERM') %>% select(-Threshold)
@@ -354,11 +345,11 @@ res_screen <- res %>%
   select(-ERM, -ERL)
 ```
 
-## A Wide Version for Export to GIS
+### A Wide Version for Export to GIS
 The function pivot_wider accepts two data columns, and handles them
 intelligently, but the default names are awkward here.  We use "rename_at only
 so we don't have to exactly match the default name by using "rename()".
-```{r export_for_GIS}
+```{r export_for_GIS_1}
 res_screen_wide <- res_screen %>%
   pivot_wider(names_from = Contaminant, values_from = c(MLE,SL),
               id_cols = c(SAMPLE_ID, sitename)) %>%
@@ -367,10 +358,13 @@ res_screen_wide <- res_screen %>%
   rename_at(6:7, ~paste0(substr(.,nchar(.)-3, nchar(.)), 'SL')) %>%
   rename_at(8, ~'DDTsSL')
 write.csv(res_screen_wide,'MLE_Results_Wide.csv')
+
+res_screen <- res_screen %>%
+  filter(! is.na(MLE))
 ```
 
-# Graphic Development
-## Draft
+## Graphic Development
+### Draft
 ```{r draft_graphic, fig.width = 6, fig.height=5}
 plt <- ggplot(res_screen, aes(Contaminant, MLE)) + 
   #geom_boxplot() +
@@ -396,7 +390,7 @@ concentrations of DDT residues in Portland Harbor are well above levels of
 concern.  Similarly, PAHs are usually above conservative screening levels, and
 many sites had levels of PCBs above levels of concern.
 
-## Reorder Factors
+### Reorder Factors
 ```{r}
 tmp <- res_screen %>%
   mutate(Contaminant = fct_relevel(Contaminant, 'Total PAHs', 'Total PCBs'))
@@ -406,7 +400,7 @@ tmp_sl <- sl %>%
    mutate(Contaminant = fct_relevel(Contaminant, 'Total PAHs', 'Total PCBs'))
 ```
 
-## Principal Graphic
+### Principal Graphic
 ```{r final_graphic, fig.width = 6, fig.height=5}
 plt <- ggplot(tmp, aes(Contaminant, MLE)) + 
   geom_point(aes(color = SL), size = 4, alpha = 0.5) +
@@ -424,7 +418,7 @@ ggsave('figures/Portland Harbor Contaminants.pdf', device = cairo_pdf,
        width = 6, height = 5)
 ```
 
-## Alternate Form Showing Correlated Levels
+### Alternate Form Showing Correlated Levels
 ```{r alternate_graphic, fig.width = 6, fig.height=5}
 plt + geom_line(aes(as.numeric(Contaminant), MLE,
                     group = SAMPLE_ID), alpha = 0.2)
@@ -432,14 +426,12 @@ plt + geom_line(aes(as.numeric(Contaminant), MLE,
 
 That might work in a powerpoint, but it's a bit noisy for SotB.
 
-
-# Number and Proportion of Exceedences Fpr Possible Table
+## Number and Proportion of Exceedences For Possible Table
 ```{r}
 res_screen %>%
   group_by(Contaminant, SL) %>%
   summarize(number = n(), .groups = 'drop_last') %>%
   pivot_wider(Contaminant, names_from = SL, values_from = number) %>%
-  select(-`NA`) %>%
   relocate(`Below ERL`, .after = Contaminant) %>%
   rowwise() %>%
   mutate(Total = sum(`Between ERL and ERM`, `Above ERM`,
@@ -449,6 +441,97 @@ res_screen %>%
   
 ```
 
+# Metals
+We handle metals separately, because we have many different constituents that
+can not appropriately be summed to provide a sense of severity of local contamination.  Also, we have NO censored values, so we need not calculate
+estimated values for non-detects.
+
+## Select the data
+```{r metals_nds}
+metals_res<- sed_data_long %>%
+  filter (cgroup =='Metals') %>%
+  select(-censored) %>%
+  rename(Conc = CONCENTRATION) %>%
+  select(-samples, -cgroup)
+metals_res <- site_info %>%
+  left_join(metals_res)
+metals_res
+```
+
+## Incorporate Screening  Levels
+```{r load_screening_values}
+sibfldnm <- 'Derived_Data'
+parent <- dirname(getwd())
+sibling = file.path(parent, sibfldnm)
+
+fn= "Marine_Sediment_Screening_Values_simplified.xlsx"
+ SQUIRTS <- read_excel(file.path(sibling,fn)) %>%
+   select(1:8) %>%
+   filter(Chemical %in% unique(metals_res$Contaminant)) %>%
+   mutate(Chemical = factor(Chemical, 
+          levels = levels(metals_res$Contaminant))) %>%
+   mutate(across(T20:AET, ~ .x / 1000)) # Convert units from PPB to PPM
+```
+
+```{r screening_lookup_table}
+lookup <- SQUIRTS %>%
+  mutate(chemical = as.character(Chemical))
+metals_res <- metals_res %>%
+  mutate(chemical = as.character(Contaminant))
+metals_res <- metals_res %>%
+  left_join(lookup, by = 'chemical') %>%
+  select(-chemical) %>%
+  mutate(SL = factor(ifelse(is.na(ERL), 'N/A',
+                             ifelse(Conc <= ERL, 'Below ERL',
+                                   ifelse(Conc <= ERM,
+                                          'Between ERL and ERM','Above ERM'))),
+                      levels = c('Below ERL',
+                                 'Between ERL and ERM',
+                                 'Above ERM'))) %>%
+  select(-ERM, -ERL)
+
+rm(lookup)
+```
 
 
+### A Wide Version for Export to GIS
+The function pivot_wider accepts two data columns, and handles them
+intelligently, but the default names are awkward here.  We use "rename_at only
+so we don't have to exactly match the default name by using "rename()".
+```{r export_for_GIS_2}
+metals_res_wide <- metals_res %>%
+  pivot_wider(names_from = Contaminant, values_from = c(Conc,SL),
+              id_cols = c(SAMPLE_ID, sitename)) %>%
+  rename_at(3:4, ~substr(.,nchar(.)-3, nchar(.))) %>%  # Pull last characters
+  rename_at(5, ~'DDTs') %>%
+  rename_at(6:7, ~paste0(substr(.,nchar(.)-3, nchar(.)), 'SL')) %>%
+  rename_at(8, ~'DDTsSL')
+write.csv(metals_res_wide,'Metals_Results_Wide.csv')
+```
+
+# Reorder Metals Factor
+```{r}
+tmp <- metals_res %>%
+  mutate(Contaminant = factor(Contaminant),
+         Contaminant = fct_reorder(Contaminant, Conc, median))
+levels(tmp$Contaminant)
+```
+
+
+### Principal Graphic
+```{r metals_graphic, fig.width = 6, fig.height=5}
+plt <- ggplot(tmp, aes(Contaminant, Conc, color = SL)) + 
+  geom_point(size = 4, alpha = 0.5) +
+  
+  scale_y_log10(labels=scales::comma) +
+  scale_color_manual(name = '', values = cbep_colors()) +
+  ylab('Concentration (ppm)') +
+  xlab ('') +
+  theme_cbep() +
+  theme(axis.text.x = element_text(angle = 90, vjust=0.5, hjust=1)) 
+plt
+
+ggsave('figures/Portland Harbor Metals.pdf', device = cairo_pdf,
+       width = 6, height = 5)
+```
 
