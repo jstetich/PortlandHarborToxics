@@ -1,21 +1,19 @@
-Exploratory analysis of Sediment Toxicity Data : Metals
+Exploratory Analysis of Sediment Toxicity Data : Metals
 ================
 Curtis C. Bohlen, Casco Bay Estuary Partnership
 7/16/2020
 
-  - [Install Libraries](#install-libraries)
-  - [Load Basic Data](#load-basic-data)
-  - [Chemical Parameters](#chemical-parameters)
-  - [Extract Metals Data Only](#extract-metals-data-only)
-  - [We Have NO Non-detects](#we-have-no-non-detects)
-  - [Initial graphics](#initial-graphics)
-      - [Pairs Plot](#pairs-plot)
-      - [Metals by Samples](#metals-by-samples)
-  - [Load Screening Values Data](#load-screening-values-data)
-      - [Convert to a look-up table](#convert-to-a-look-up-table)
-  - [Final Plot](#final-plot)
-      - [Add Screaning Levels to Plot](#add-screaning-levels-to-plot)
-  - [Conclusion](#conclusion)
+-   [Install Libraries](#install-libraries)
+-   [Load Basic Data](#load-basic-data)
+-   [Chemical Parameters](#chemical-parameters)
+-   [Extract Metals Data Only](#extract-metals-data-only)
+-   [We Have NO Non-detects](#we-have-no-non-detects)
+-   [Initial graphics](#initial-graphics)
+    -   [Pairs Plot](#pairs-plot)
+    -   [Metals by Samples](#metals-by-samples)
+-   [Load Screening Values Data](#load-screening-values-data)
+    -   [Convert to a look-up table](#convert-to-a-look-up-table)
+-   [Final Plot](#final-plot)
 
 <img
   src="https://www.cascobayestuary.org/wp-content/uploads/2014/04/logo_sm.jpg"
@@ -28,14 +26,14 @@ library(readxl)
 library(tidyverse)
 ```
 
-    ## -- Attaching packages --------------------------------------------- tidyverse 1.3.0 --
+    ## -- Attaching packages --------------------------------------- tidyverse 1.3.0 --
 
-    ## v ggplot2 3.3.2     v purrr   0.3.4
-    ## v tibble  3.0.3     v dplyr   1.0.0
-    ## v tidyr   1.1.0     v stringr 1.4.0
-    ## v readr   1.3.1     v forcats 0.5.0
+    ## v ggplot2 3.3.3     v purrr   0.3.4
+    ## v tibble  3.0.5     v dplyr   1.0.3
+    ## v tidyr   1.1.2     v stringr 1.4.0
+    ## v readr   1.4.0     v forcats 0.5.0
 
-    ## -- Conflicts ------------------------------------------------ tidyverse_conflicts() --
+    ## -- Conflicts ------------------------------------------ tidyverse_conflicts() --
     ## x dplyr::filter() masks stats::filter()
     ## x dplyr::lag()    masks stats::lag()
 
@@ -68,12 +66,14 @@ load_cbep_fonts()
 # Load Basic Data
 
 ``` r
-sibfldnm <- 'Derived_Data'
+sibfldnm <- 'Original_Data'
+niecefldnm <- 'Final_Data_Transmittal'
 parent <- dirname(getwd())
-sibling <- file.path(parent,sibfldnm)
-fn <- 'working_data.xls'
+niece = file.path(parent,sibfldnm, niecefldnm)
 
-the_data <- read_excel(paste(sibling,fn, sep='/'), 
+fn <- "draft_Combined_data_20190917.xls"
+
+the_data <- read_excel(paste(niece, fn, sep='/'), 
     sheet = "Combined", col_types = c("skip", 
         "text", "skip", "skip", "skip", 
         "skip", "skip", "skip", "skip", 
@@ -96,7 +96,7 @@ the_data <- read_excel(paste(sibling,fn, sep='/'),
 # Chemical Parameters
 
 ``` r
-metals.names <- read_excel(paste(sibling,fn, sep='/'), sheet = "Metals", skip = 3) %>%
+metals.names <- read_excel(file.path(niece,fn), sheet = "Metals", skip = 3) %>%
   select(1) %>%
   slice(1:8) #%>%
 ```
@@ -146,7 +146,7 @@ metals_data_long <- the_data %>%
             censored = sum(LAB_QUALIFIER=='U', na.rm=TRUE))
 ```
 
-    ## `summarise()` regrouping output by 'SAMPLE_ID' (override with `.groups` argument)
+    ## `summarise()` has grouped output by 'SAMPLE_ID'. You can override using the `.groups` argument.
 
 ``` r
 metals_data <- metals_data_long %>%
@@ -164,6 +164,11 @@ any(metals_data_long$censored>0)
 ```
 
     ## [1] FALSE
+
+``` r
+metals_data_long <- metals_data_long %>% select(-censored)
+metals_data <- metals_data %>% select(-censored)
+```
 
 # Initial graphics
 
@@ -205,6 +210,10 @@ plt
 
 ![](Metals_handling_NDs_files/figure-gfm/plot_metals_%20by_samples-1.png)<!-- -->
 
+``` r
+rm(tmp)
+```
+
 # Load Screening Values Data
 
 The names in the screening values table have to exactly match the order
@@ -212,11 +221,19 @@ of levels for the Chemicals in the metals data if we want the final
 graphics to plot them in order.
 
 ``` r
+sibfldnm <- 'Derived_Data'
+parent <- dirname(getwd())
+sibling = file.path(parent, sibfldnm)
+
 fn= "Marine_Sediment_Screening_Values_simplified.xlsx"
- SQUIRTS <- read_excel(paste(sibling,fn, sep = '/')) %>%
+ SQUIRTS <- read_excel(file.path(sibling,fn)) %>%
    select(1:8) %>%
    filter(Chemical %in% names(metals_data)) %>%
-   mutate(Chemical = factor(Chemical)) #%>%
+   mutate(Chemical = factor(Chemical)) %>%
+   mutate(across(T20:AET, ~ .x / 1000)) # Convert units from PPB to PPM
+ 
+ 
+ #%>%
    #filter(! is.na(Chemical))
  
  SQUIRTS.LONG <- SQUIRTS %>%
@@ -236,8 +253,9 @@ indicator that shows whether specific measurements are above certain
 screening levels.
 
 our interest here focuses on the “Effects Range Low” and “Effects Range
-Medium” screening criteria. WE focus on those only because we have used
-them in the past.
+Medium” screening criteria. We focus on those only because we have used
+them in the past, for example, in the 2017 Ramboll Environ report on
+tocics in Casco Bay sediments.
 
 ``` r
 lookup <- SQUIRTS %>%
@@ -247,8 +265,8 @@ metals_data_long <- metals_data_long %>%
   mutate(ERL = lookup[PARAMETER_NAME, 'ERL']) %>%
   mutate(ERM = lookup[PARAMETER_NAME, 'ERM']) %>%
   mutate(LVL = factor(ifelse(is.na(ERL), 'N/A',
-                             ifelse(CONCENTRATION<=ERL, 'Value <= ERL',
-                                   ifelse(CONCENTRATION<=ERM,
+                             ifelse(CONCENTRATION <= ERL, 'Value <= ERL',
+                                   ifelse(CONCENTRATION <= ERM,
                                           'ERL < Value <= ERM','ERM < Value'))),
                       levels = c('N/A','Value <= ERL',
                                  'ERL < Value <= ERM','ERM < Value')))
@@ -257,7 +275,7 @@ metals_data_long <- metals_data_long %>%
 # Final Plot
 
 ``` r
-plt <- ggplot(tmp, aes(x = metals, y = Concentration)) +
+plt <- ggplot(metals_data_long, aes(x = PARAMETER_NAME, y = CONCENTRATION)) +
   # primary geom can be geom_boxplot,  geom_violin", Geom_point, or geom_dotplot
   # Combinations are also interesting. Note that I  turned off  display of
   # outliers in the boxlot code, which is appropriate if you overlay points.
@@ -266,11 +284,16 @@ plt <- ggplot(tmp, aes(x = metals, y = Concentration)) +
   #geom_violin() +
   #geom_point(size = 1, alpha = 0.5) +
   
-  geom_dotplot(binaxis='y', stackdir = "center",
-                dotsize = 0.75, color = 'blue1') +
+  geom_dotplot(mapping = aes(fill = LVL), binaxis='y', stackdir = "center",
+                dotsize = 0.75) +
  
   theme_cbep() +
-  theme(axis.text.x = element_text(size = 10, hjust= 1, vjust = 0.25, angle = 90)) + 
+  scale_fill_manual(values = cbep_colors()) +
+  
+  theme(axis.text.x = element_text(size = 10, 
+                                   hjust= 1, 
+                                   vjust = 0.25, 
+                                   angle = 90)) + 
   scale_y_log10(breaks = c(0.1, 10, 1000), labels = c('0.1', '10', '1000')) +
   xlab('Metal')+ ylab('Concentration (ppm)')
 plt
@@ -279,34 +302,3 @@ plt
     ## `stat_bindot()` using `bins = 30`. Pick better value with `binwidth`.
 
 ![](Metals_handling_NDs_files/figure-gfm/draft_dotplot-1.png)<!-- -->
-
-## Add Screaning Levels to Plot
-
-``` r
-plt + 
-  geom_point(data = SQUIRTS.LONG,
-             mapping = aes(x=Chemical, y=value, color = type), shape = 3)+
-  scale_color_manual(values = cbep_colors(), name = 'Criteria') +
-  scale_y_log10(breaks = c(0.1, 10, 1000, 100000),
-                labels = c('0.1', '10', '1000', '100,000'))
-```
-
-    ## Scale for 'y' is already present. Adding another scale for 'y', which will
-    ## replace the existing scale.
-
-    ## `stat_bindot()` using `bins = 30`. Pick better value with `binwidth`.
-
-![](Metals_handling_NDs_files/figure-gfm/revised_dotplot-1.png)<!-- -->
-
-``` r
-  # theme(legend.position = 'None')
-```
-
-So, absolutely consistently, metals levels are below relevant screening
-levels by an order of magnitude or more.
-
-# Conclusion
-
-All Metals are below Levels of Concern, by about an order of magnitude.
-So probably not worth showing on a graphic. Interest here may be
-increased if plots with high metals are also high in other contaminants.
