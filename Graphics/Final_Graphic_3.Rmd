@@ -364,6 +364,15 @@ res_screen <- res_screen %>%
 ```
 
 ## Graphic Development
+
+```{r define_colors}
+# First line is not necessary, but we like to keep color formats consistent....
+fb <- rgb(t(col2rgb('firebrick')), maxColorValue = 255)
+tox_colors <- c(cbep_colors()[1:2], fb)
+na_color <- cbep_colors()[3]
+rm(fb)
+```
+
 ### Draft
 ```{r draft_graphic, fig.width = 6, fig.height=5}
 plt <- ggplot(res_screen, aes(Contaminant, MLE)) + 
@@ -376,7 +385,7 @@ plt <- ggplot(res_screen, aes(Contaminant, MLE)) +
   scale_y_log10(labels=scales::comma) +
   
  #scale_shape_manual(values = c(24,25)) +
-  scale_color_manual(name = '', values = cbep_colors()) +
+  scale_color_manual(name = '', values = tox_colors) +
   ylab('Concentration (ppb)') +
   xlab ('') +
   theme_cbep() +
@@ -405,7 +414,7 @@ tmp_sl <- sl %>%
 plt <- ggplot(tmp, aes(Contaminant, MLE)) + 
   geom_point(aes(color = SL), size = 4, alpha = 0.5) +
   scale_y_log10(labels=scales::comma) +
-  scale_color_manual(name = '', values = cbep_colors()) +
+  scale_color_manual(name = '', values = tox_colors) +
   #scale_color_viridis_d(begin=0, end=0.9, name = '') +  # The "end" parameter cuts out a very pale yellow.
   ylab('Concentration (ppb)') +
   xlab ('') +
@@ -524,7 +533,7 @@ plt <- ggplot(tmp, aes(Contaminant, Conc, color = SL)) +
   geom_point(size = 4, alpha = 0.5) +
   
   scale_y_log10(labels=scales::comma) +
-  scale_color_manual(name = '', values = cbep_colors()) +
+  scale_color_manual(name = '', values = tox_colors) +
   ylab('Concentration (ppm)') +
   xlab ('') +
   theme_cbep() +

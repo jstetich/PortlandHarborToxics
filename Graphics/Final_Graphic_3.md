@@ -95,12 +95,20 @@ library(readxl)
 library(tidyverse)
 ```
 
-    ## -- Attaching packages --------------------------------------- tidyverse 1.3.0 --
+    ## Warning: package 'tidyverse' was built under R version 4.0.5
+
+    ## -- Attaching packages --------------------------------------- tidyverse 1.3.1 --
 
     ## v ggplot2 3.3.3     v purrr   0.3.4
-    ## v tibble  3.0.5     v dplyr   1.0.3
-    ## v tidyr   1.1.2     v stringr 1.4.0
-    ## v readr   1.4.0     v forcats 0.5.0
+    ## v tibble  3.1.2     v dplyr   1.0.6
+    ## v tidyr   1.1.3     v stringr 1.4.0
+    ## v readr   1.4.0     v forcats 0.5.1
+
+    ## Warning: package 'tidyr' was built under R version 4.0.5
+
+    ## Warning: package 'dplyr' was built under R version 4.0.5
+
+    ## Warning: package 'forcats' was built under R version 4.0.5
 
     ## -- Conflicts ------------------------------------------ tidyverse_conflicts() --
     ## x dplyr::filter() masks stats::filter()
@@ -108,8 +116,15 @@ library(tidyverse)
 
 ``` r
 library(ggthemes)
+```
+
+    ## Warning: package 'ggthemes' was built under R version 4.0.5
+
+``` r
 library(GGally)
 ```
+
+    ## Warning: package 'GGally' was built under R version 4.0.5
 
     ## Registered S3 method overwritten by 'GGally':
     ##   method from   
@@ -118,6 +133,8 @@ library(GGally)
 ``` r
 library(maxLik)
 ```
+
+    ## Warning: package 'maxLik' was built under R version 4.0.5
 
     ## Loading required package: miscTools
 
@@ -427,7 +444,7 @@ the_data[the_data$SAMPLE_ID=='CSS-15' & the_data$PARAMETER_NAME=="4,4'-DDT",]
     ## 5 <NA>      <NA>   <NA>                  NA     <NA>                   NA    
     ## 6 <NA>      <NA>   <NA>                  NA     <NA>                   NA    
     ## 7 <NA>      <NA>   <NA>                  NA     <NA>                   NA    
-    ## # ... with 8 more variables: PARAMETER_UNITS <chr>, `%_RECOVERY` <dbl>,
+    ## # ... with 8 more variables: PARAMETER_UNITS <chr>, %_RECOVERY <dbl>,
     ## #   RPD <dbl>, TEST <chr>, PARAMETER_QUALIFIER <chr>, PARAMETER_FILTERED <chr>,
     ## #   MDL <dbl>, DILUTION_FACTOR <dbl>
 
@@ -517,7 +534,7 @@ est <- the_data %>%
 (mle <- mean(est))
 ```
 
-    ## [1] 0.4460578
+    ## [1] 0.4467067
 
 ``` r
 rm(est)
@@ -628,6 +645,14 @@ res_screen <- res_screen %>%
 
 ## Graphic Development
 
+``` r
+# First line is not necessary, but we like to keep color formats consistent....
+fb <- rgb(t(col2rgb('firebrick')), maxColorValue = 255)
+tox_colors <- c(cbep_colors()[1:2], fb)
+na_color <- cbep_colors()[3]
+rm(fb)
+```
+
 ### Draft
 
 ``` r
@@ -641,7 +666,7 @@ plt <- ggplot(res_screen, aes(Contaminant, MLE)) +
   scale_y_log10(labels=scales::comma) +
   
  #scale_shape_manual(values = c(24,25)) +
-  scale_color_manual(name = '', values = cbep_colors()) +
+  scale_color_manual(name = '', values = tox_colors) +
   ylab('Concentration (ppb)') +
   xlab ('') +
   theme_cbep() +
@@ -678,7 +703,7 @@ tmp_sl <- sl %>%
 plt <- ggplot(tmp, aes(Contaminant, MLE)) + 
   geom_point(aes(color = SL), size = 4, alpha = 0.5) +
   scale_y_log10(labels=scales::comma) +
-  scale_color_manual(name = '', values = cbep_colors()) +
+  scale_color_manual(name = '', values = tox_colors) +
   #scale_color_viridis_d(begin=0, end=0.9, name = '') +  # The "end" parameter cuts out a very pale yellow.
   ylab('Concentration (ppb)') +
   xlab ('') +
@@ -841,7 +866,7 @@ plt <- ggplot(tmp, aes(Contaminant, Conc, color = SL)) +
   geom_point(size = 4, alpha = 0.5) +
   
   scale_y_log10(labels=scales::comma) +
-  scale_color_manual(name = '', values = cbep_colors()) +
+  scale_color_manual(name = '', values = tox_colors) +
   ylab('Concentration (ppm)') +
   xlab ('') +
   theme_cbep() +
